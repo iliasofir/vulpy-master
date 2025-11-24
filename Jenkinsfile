@@ -29,71 +29,83 @@ pipeline {
         }
         
         stage('🔍 SAST - Bandit') {
-            steps {
-                echo '================================================'
-                echo '🔍 Analyse statique du code avec Bandit'
-                echo '================================================'
-                script {
-                    echo '→ Exécution de Bandit via Docker...'
+    steps {
+        echo '================================================'
+        echo '🔍 Analyse statique du code avec Bandit'
+        echo '================================================'
+        script {
+            echo '→ Exécution de Bandit via Docker...'
+            
+            sh """
+                docker run --rm \
+                -v "${WORKSPACE}:/app" \
+                -w /app \
+                python:3.11-slim \
+                bash -c '
+                    pip install bandit -q
                     
-                    // Générer tous les rapports avec une seule commande Bandit
-                    sh """
-                        docker run --rm \
-                        -v "${WORKSPACE}:/app" \
-                        -w /app \
-                        python:3.11-slim \
-                        bash -c '
-                            set -x
-                            pip install bandit -q
-                            echo "=== Current directory ==="
-                            pwd
-                            ls -la
-                            echo "=== Creating reports directory ==="
-                            mkdir -p /app/${REPORT_DIR}
-                            ls -ld /app/${REPORT_DIR}
-                            echo "=== Running Bandit ==="
-                            bandit -r bad good utils -f html -o /app/${REPORT_DIR}/bandit-report.html || true
-                            bandit -r bad good utils -f json -o /app/${REPORT_DIR}/bandit-report.json || true
-                            bandit -r bad good utils -f txt -o /app/${REPORT_DIR}/bandit-report.txt || true
-                            bandit -r bad good utils -f csv -o /app/${REPORT_DIR}/bandit-report.csv || true
-                            echo "=== Files created ==="
-                            ls -la /app/${REPORT_DIR}/
-                            echo "=== Setting permissions ==="
-                            chmod -R 777 /app/${REPORT_DIR}
-                            echo "=== Final check ==="
-                            ls -la /app/${REPORT_DIR}/
-                        '
-                    """
+                    echo "=== Contenu du workspace ==="
+                    ls -la /app/
                     
-                    // Vérification détaillée
-                    sh """
-                        echo "=== Vérification Jenkins - PWD ==="
-                        pwd
-                        echo "=== Contenu workspace ==="
-                        ls -la
-                        echo "=== Contenu ${REPORT_DIR} ==="
-                        ls -la ${REPORT_DIR}/ || echo "Répertoire vide ou inexistant"
-                        echo "=== Recherche fichiers bandit ==="
-                        find . -name "bandit-*" -type f 2>/dev/null || echo "Aucun fichier trouvé"
-                        echo "=== Permissions ${REPORT_DIR} ==="
-                        ls -ld ${REPORT_DIR}/
-                    """
+                    echo "=== Vérification des dossiers à scanner ==="
+                    ls -ld /app/bad /app/good /app/utils 2>/dev/null || echo "Dossiers non trouvés!"
                     
-                    // Test de création d'un fichier simple
-                    sh """
-                        echo "=== Test d'écriture direct ==="
-                        echo "test" > ${REPORT_DIR}/test.txt
-                        ls -la ${REPORT_DIR}/
-                    """
+                    echo "=== Création répertoire rapports ==="
+                    mkdir -p /app/${REPORT_DIR}
                     
-                    if (fileExists("${REPORT_DIR}/bandit-report.html")) {
-                        echo '✓ Rapports générés avec succès'
-                    } else {
-                        echo '⚠️ Rapports non trouvés - Problème de persistance Docker!'
-                    }
-                }
+                    echo "=== Exécution Bandit sur les fichiers Python trouvés ==="
+                    
+                    # Scanner tous les fichiers .py récursivement
+                    find /app -name "*.py" -type f > /tmp/python_files.txt
+                    echo "Fichiers Python trouvés:"
+                    cat /tmp/python_files.txt
+                    
+                    # Exécuter Bandit sur TOUT le workspace
+                    echo "=== Scanning avec Bandit ==="
+                    bandit -r /app/bad /app/good /app/utils \
+                        -f html -o /app/${REPORT_DIR}/bandit-report.html 2>&1 || true
+                    
+                    bandit -r /app/bad /app/good /app/utils \
+                        -f json -o /app/${REPORT_DIR}/bandit-report.json 2>&1 || true
+                    
+                    bandit -r /app/bad /app/good /app/utils \
+                        -f txt -o /app/${REPORT_DIR}/bandit-report.txt 2>&1 || true
+                    
+                    bandit -r /app/bad /app/good /app/utils \
+                        -f csv -o /app/${REPORT_DIR}/bandit-report.csv 2>&1 || true
+                    
+                    echo "=== Rapports générés ==="
+                    ls -lah /app/${REPORT_DIR}/
+                    
+                    echo "=== Permissions ==="
+                    chmod -R 777 /app/${REPORT_DIR}
+                    
+                    echo "=== Résumé rapide ==="
+                    bandit -r /app/bad /app/good /app/utils --severity-level low 2>&1 || true
+                '
+            """
+            
+            // Vérification finale
+            sh """
+                echo "=== Vérification finale depuis Jenkins ==="
+                ls -lah ${WORKSPACE}/${REPORT_DIR}/
+                
+                if [ -f "${WORKSPACE}/${REPORT_DIR}/bandit-report.html" ]; then
+                    echo "✓ Rapport HTML trouvé"
+                    wc -l ${WORKSPACE}/${REPORT_DIR}/bandit-report.html
+                else
+                    echo "✗ Rapport HTML non trouvé"
+                fi
+            """
+            
+            if (fileExists("${REPORT_DIR}/bandit-report.html")) {
+                echo '✓ Rapports Bandit générés avec succès'
+            } else {
+                echo '⚠️ Rapports non générés'
             }
         }
+    }
+}
 
         stage('📊 Archiver les Rapports Bandit'){
             steps {
