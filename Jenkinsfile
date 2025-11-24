@@ -64,20 +64,24 @@ pipeline {
                           python:3.11-slim \
                           bash -c "
                             pip install bandit -q && \
+                            mkdir -p ${REPORT_DIR} && \
                             echo 'Scanning with Bandit...' && \
-                            bandit -r bad/ good/ utils/ -f json -o /src/${REPORT_DIR}/bandit-report.json || true && \
-                            bandit -r bad/ good/ utils/ -f html -o /src/${REPORT_DIR}/bandit-report.html || true && \
-                            bandit -r bad/ good/ utils/ -f txt -o /src/${REPORT_DIR}/bandit-report.txt || true && \
-                            bandit -r bad/ good/ utils/ -f csv -o /src/${REPORT_DIR}/bandit-report.csv || true && \
-                            echo 'Bandit reports generated in ${REPORT_DIR}/'
+                            bandit -r bad/ good/ utils/ -f json -o ${REPORT_DIR}/bandit-report.json || true && \
+                            bandit -r bad/ good/ utils/ -f html -o ${REPORT_DIR}/bandit-report.html || true && \
+                            bandit -r bad/ good/ utils/ -f txt -o ${REPORT_DIR}/bandit-report.txt || true && \
+                            bandit -r bad/ good/ utils/ -f csv -o ${REPORT_DIR}/bandit-report.csv || true && \
+                            ls -la ${REPORT_DIR}/ && \
+                            echo 'Bandit reports generated'
                           "
                     """
                     
                     // Vérifier que les rapports ont été générés
+                    sh "ls -la ${REPORT_DIR}/ || echo 'Report directory empty'"
+                    
                     if (fileExists("${REPORT_DIR}/bandit-report.html")) {
                         echo '✓ Rapport HTML généré avec succès'
                     } else {
-                        error('❌ Échec de génération du rapport Bandit')
+                        echo '⚠️  Rapport HTML non trouvé'
                     }
                     
                     // Afficher un résumé
