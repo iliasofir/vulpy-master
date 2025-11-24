@@ -47,18 +47,11 @@ pipeline {
                         python:3.11-slim \
                         bash -c '
                             pip install bandit -q && \
-                            mkdir -p "${REPORT_DIR}" && \
-                            echo "Scanning with Bandit..." && \
-                            bandit -r bad good utils \
-                                -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
-                            bandit -r bad good utils \
-                                -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
-                            bandit -r bad good utils \
-                                -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
-                            bandit -r bad good utils \
-                                -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
-                            echo "Files in ${REPORT_DIR}:" && ls -la "${REPORT_DIR}" && \
-                            echo "Bandit reports generated"
+                            mkdir -p /tmp/reports && \
+                            bandit -r bad good utils -f html -o /tmp/reports/bandit-report.html || true && \
+                            bandit -r bad good utils -f json -o /tmp/reports/bandit-report.json || true && \
+                            cp -r /tmp/reports/* "${REPORT_DIR}/" && \
+                            chmod -R 777 "${REPORT_DIR}"
                         '
                     """
 
