@@ -53,10 +53,10 @@ pipeline {
                             pip install bandit -q && \
                             mkdir -p "${REPORT_DIR}" && \
                             echo "Scanning with Bandit..." && \
-                            bandit -r . -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
-                            bandit -r . -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
-                            bandit -r . -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
-                            bandit -r . -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
+                            bandit -r bad good utils \
+                                -f html -o security-reports/bandit-report.html || true
+                            bandit -r bad good utils \
+                                -f json -o security-reports/bandit-report.json || true
                             echo "Files in ${REPORT_DIR}:" && ls -la "${REPORT_DIR}" && \
                             echo "Bandit reports generated"
                         '
