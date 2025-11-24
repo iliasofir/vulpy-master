@@ -1,308 +1,409 @@
 pipeline {
     agent any
-
+    
+    environment {
+        // Configuration
+        PROJECT_NAME = 'vulpy'
+        DOCKER_IMAGE = 'vulpy-app'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        REPORT_DIR = 'security-reports'
+        
+        // Docker Registry - À CONFIGURER selon votre environnement
+        DOCKER_REGISTRY = 'your-registry.azurecr.io'
+        DOCKER_CREDENTIALS_ID = 'docker-registry-credentials'
+        
+        // Security Thresholds
+        MAX_CRITICAL_VULNS = '0'
+        MAX_HIGH_VULNS = '5'
+        FAIL_ON_CRITICAL = 'true'
+    }
+    
     stages {
-        stage('SAST - Bandit (Static Code Analysis)') {
-    agent {
-        docker {
-            image 'python:3.9-slim'
-            args  '-v $PWD:/src -w /src'
-        }
-    }
-    steps {
-        echo '🔍 Running Bandit inside Docker...'
-        sh '''
-            mkdir -p reports
-            pip install --no-cache-dir bandit
-
-            bandit -r bad/ good/ utils/ -f json -o reports/bandit-report.json || true
-            bandit -r bad/ good/ utils/ -f txt -o reports/bandit-report.txt || true
-            bandit -r bad/ good/ utils/ -f html -o reports/bandit-report.html || true
-            bandit -r bad/ good/ utils/ -f csv -o reports/bandit-report.csv || true
-
-            echo '=== Bandit Scan Results ==='
-            bandit -r bad/ good/ utils/ --severity-level medium || true
-            echo '✅ Bandit scan completed'
-        '''
-    }
-    post {
-        always {
-            archiveArtifacts artifacts: 'reports/bandit-*', allowEmptyArchive: true
-        }
-    }
-}
-        
-        stage('Generate Summary Report') {
+        stage('📥 Checkout Code') {
             steps {
-                echo '📊 Generating Bandit summary report...'
-                sh '''
-                    mkdir -p reports
-                    
-                    cat > reports/bandit-summary.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Bandit Security Scan - Vulpy</title>
-    <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0;
-            padding: 20px; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        .container { 
-            max-width: 1000px; 
-            margin: 0 auto; 
-            background: white; 
-            padding: 40px; 
-            border-radius: 15px; 
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2); 
-        }
-        h1 { 
-            color: #2c3e50; 
-            border-bottom: 4px solid #e74c3c; 
-            padding-bottom: 15px;
-            margin-top: 0;
-        }
-        h2 { 
-            color: #34495e; 
-            margin-top: 30px;
-            border-left: 4px solid #3498db;
-            padding-left: 15px;
-        }
-        .header-box {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-        }
-        .header-box h1 {
-            color: white;
-            border: none;
-            margin: 0;
-            padding: 0;
-        }
-        .info-box { 
-            background: #ecf0f1; 
-            padding: 20px; 
-            margin: 15px 0; 
-            border-radius: 8px; 
-            border-left: 5px solid #3498db; 
-        }
-        .warning-box {
-            background: #fff3cd;
-            border-left-color: #ffc107;
-        }
-        .danger-box {
-            background: #f8d7da;
-            border-left-color: #dc3545;
-        }
-        .success-box {
-            background: #d4edda;
-            border-left-color: #28a745;
-        }
-        .timestamp { 
-            color: #7f8c8d; 
-            font-size: 0.95em;
-            margin: 5px 0;
-        }
-        ul { 
-            line-height: 2;
-            padding-left: 20px;
-        }
-        li {
-            margin: 8px 0;
-        }
-        .report-link { 
-            display: inline-block; 
-            margin: 10px 10px 10px 0; 
-            padding: 12px 25px; 
-            background: #e74c3c; 
-            color: white; 
-            text-decoration: none; 
-            border-radius: 6px;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-        .report-link:hover { 
-            background: #c0392b;
-            transform: translateY(-2px);
-        }
-        .vulnerability-types {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        .vuln-card {
-            background: white;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 15px;
-            transition: transform 0.2s;
-        }
-        .vuln-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .vuln-card h4 {
-            margin-top: 0;
-            color: #e74c3c;
-        }
-        .badge {
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: bold;
-            margin-right: 10px;
-        }
-        .badge-high { background: #dc3545; color: white; }
-        .badge-medium { background: #ffc107; color: #000; }
-        .badge-low { background: #28a745; color: white; }
-        .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #ddd;
-            color: #7f8c8d;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header-box">
-            <h1>🔒 Bandit Security Scan Report</h1>
-            <p class="timestamp" style="color: white; margin: 10px 0 0 0;">Static Application Security Testing (SAST) for Python Code</p>
-        </div>
-        
-        <div class="info-box">
-            <p class="timestamp"><strong>Project:</strong> Vulpy (Vulnerable Python Application)</p>
-            <p class="timestamp"><strong>Build Number:</strong> #${BUILD_NUMBER}</p>
-            <p class="timestamp"><strong>Scan Date:</strong> $(date)</p>
-            <p class="timestamp"><strong>Tool:</strong> Bandit v$(. ${VIRTUAL_ENV}/bin/activate && bandit --version | head -n1)</p>
-        </div>
-        
-        <h2>📋 Scan Overview</h2>
-        <div class="info-box danger-box">
-            <h3>🎯 Scanned Directories</h3>
-            <ul>
-                <li><strong>bad/</strong> - Intentionally vulnerable code examples</li>
-                <li><strong>good/</strong> - Secure code implementations</li>
-                <li><strong>utils/</strong> - Utility functions</li>
-            </ul>
-        </div>
-        
-        <h2>🔍 Vulnerability Types Detected by Bandit</h2>
-        <div class="vulnerability-types">
-            <div class="vuln-card">
-                <h4>🗄️ SQL Injection</h4>
-                <p>Detects unsafe SQL query construction that could lead to SQL injection attacks.</p>
-            </div>
-            <div class="vuln-card">
-                <h4>🔑 Hardcoded Secrets</h4>
-                <p>Identifies passwords, API keys, and tokens hardcoded in source code.</p>
-            </div>
-            <div class="vuln-card">
-                <h4>⚡ Command Injection</h4>
-                <p>Finds unsafe execution of shell commands with user input.</p>
-            </div>
-            <div class="vuln-card">
-                <h4>🌐 XSS Vulnerabilities</h4>
-                <p>Detects potential Cross-Site Scripting issues in templates.</p>
-            </div>
-            <div class="vuln-card">
-                <h4>🔐 Weak Cryptography</h4>
-                <p>Identifies use of weak or deprecated cryptographic methods.</p>
-            </div>
-            <div class="vuln-card">
-                <h4>📝 YAML Deserialization</h4>
-                <p>Detects unsafe YAML parsing that could lead to code execution.</p>
-            </div>
-        </div>
-        
-        <h2>📊 Generated Reports</h2>
-        <div class="info-box success-box">
-            <p><strong>Multiple formats available:</strong></p>
-            <ul>
-                <li>📄 <strong>JSON:</strong> bandit-report.json (machine-readable)</li>
-                <li>📝 <strong>Text:</strong> bandit-report.txt (console output)</li>
-                <li>🌐 <strong>HTML:</strong> bandit-report.html (visual report)</li>
-                <li>📊 <strong>CSV:</strong> bandit-report.csv (spreadsheet format)</li>
-            </ul>
-            <div style="margin-top: 20px;">
-                <a href="bandit-report.html" class="report-link">📄 View Detailed HTML Report</a>
-            </div>
-        </div>
-        
-        <h2>🎯 Severity Levels</h2>
-        <div class="info-box">
-            <p><span class="badge badge-high">HIGH</span> Critical vulnerabilities requiring immediate attention</p>
-            <p><span class="badge badge-medium">MEDIUM</span> Important issues that should be addressed</p>
-            <p><span class="badge badge-low">LOW</span> Minor issues and best practice violations</p>
-        </div>
-        
-        <h2>🔄 Next Steps</h2>
-        <div class="info-box warning-box">
-            <ol>
-                <li><strong>Review the detailed HTML report</strong> for all findings</li>
-                <li><strong>Prioritize HIGH severity issues</strong> for immediate remediation</li>
-                <li><strong>Compare bad/ vs good/</strong> directories to understand secure coding practices</li>
-                <li><strong>Update vulnerable code</strong> following security best practices</li>
-                <li><strong>Re-run the scan</strong> after fixes to verify improvements</li>
-            </ol>
-        </div>
-        
-        <h2>📚 Resources</h2>
-        <div class="info-box">
-            <ul>
-                <li>🔗 <a href="https://bandit.readthedocs.io/" target="_blank">Bandit Documentation</a></li>
-                <li>🔗 <a href="https://owasp.org/www-project-top-ten/" target="_blank">OWASP Top 10</a></li>
-                <li>🔗 <a href="https://cwe.mitre.org/" target="_blank">CWE Database</a></li>
-            </ul>
-        </div>
-        
-        <div class="footer">
-            <p>🔒 Security Scan powered by Bandit | Jenkins Build #${BUILD_NUMBER}</p>
-            <p>All reports are archived in Jenkins artifacts</p>
-        </div>
-    </div>
-</body>
-</html>
-EOF
-                    
-                    echo "✅ Summary report generated"
-                '''
+                echo '================================================'
+                echo '📥 Récupération du code source Vulpy'
+                echo '================================================'
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/master']],
+                    userRemoteConfigs: [[url: 'https://github.com/fportantier/vulpy.git']]
+                ])
             }
-            post {
-                always {
+        }
+        
+        stage('🔧 Préparation Environnement') {
+            steps {
+                echo '================================================'
+                echo '🔧 Préparation de l\'environnement'
+                echo '================================================'
+                script {
+                    // Créer le répertoire pour les rapports
+                    sh "mkdir -p ${REPORT_DIR}"
+                    
+                    // Vérifier que Docker est disponible
+                    sh 'docker --version || echo "Docker not found!"'
+                    
+                    echo '✓ Environnement préparé'
+                }
+            }
+        }
+        
+        stage('🔍 SAST - Bandit') {
+            steps {
+                echo '================================================'
+                echo '🔍 Analyse statique du code avec Bandit'
+                echo '================================================'
+                script {
+                    echo '→ Exécution de Bandit via Docker...'
+                    
+                    def banditStatus = sh(
+                        script: """
+                            docker run --rm \
+                              -v "\${WORKSPACE}:/src" \
+                              -w /src \
+                              python:3.11-slim \
+                              bash -c "pip install bandit && \
+                                       bandit -r bad -f json -o ${REPORT_DIR}/bandit-report.json; \
+                                       bandit -r bad -f html -o ${REPORT_DIR}/bandit-report.html; \
+                                       bandit -r bad -f txt -o ${REPORT_DIR}/bandit-report.txt || true"
+                        """,
+                        returnStatus: true
+                    )
+                    
+                    if (banditStatus != 0) {
+                        echo '⚠️  Bandit a détecté des problèmes de sécurité'
+                        unstable(message: 'Bandit found security issues')
+                    }
+                    
+                    echo '✓ Analyse SAST Bandit terminée'
+                }
+            }
+        }
+        
+        stage('💎 SCA - Trivy (Code Source)') {
+            steps {
+                echo '================================================'
+                echo '💎 Scan SCA avec Trivy - Code Source'
+                echo '================================================'
+                script {
+                    // 1. Scan de requirements.txt
+                    echo '→ Scan de requirements.txt...'
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/workspace" \
+                          aquasec/trivy:latest \
+                          fs --scanners vuln \
+                          --format json \
+                          --output /workspace/${REPORT_DIR}/trivy-requirements.json \
+                          /workspace/requirements.txt || true
+                    """
+                    
+                    // 2. Scan des dépendances Python
+                    echo '→ Scan des dépendances Python...'
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/workspace" \
+                          aquasec/trivy:latest \
+                          fs --scanners vuln \
+                          --format json \
+                          --dependency-tree \
+                          --output /workspace/${REPORT_DIR}/trivy-dependencies.json \
+                          /workspace || true
+                    """
+                    
+                    // 3. Scan complet (vuln + misconfig + secrets)
+                    echo '→ Scan des fichiers (vuln + misconfig + secrets)...'
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/workspace" \
+                          aquasec/trivy:latest \
+                          fs --scanners vuln,misconfig,secret \
+                          --format json \
+                          --output /workspace/${REPORT_DIR}/trivy-source-full.json \
+                          /workspace || true
+                    """
+                    
+                    // 4. Génération SBOM
+                    echo '→ Génération du SBOM...'
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/workspace" \
+                          aquasec/trivy:latest \
+                          fs --format cyclonedx \
+                          --output /workspace/${REPORT_DIR}/trivy-sbom.json \
+                          /workspace || true
+                    """
+                    
+                    // 5. Rapport SARIF
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/workspace" \
+                          aquasec/trivy:latest \
+                          fs --scanners vuln,misconfig,secret,license \
+                          --format sarif \
+                          --output /workspace/${REPORT_DIR}/trivy-source.sarif \
+                          /workspace || true
+                    """
+                    
+                    // 6. Rapport HTML
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/workspace" \
+                          aquasec/trivy:latest \
+                          fs --scanners vuln,misconfig,secret \
+                          --format template --template "@contrib/html.tpl" \
+                          --output /workspace/${REPORT_DIR}/trivy-source-report.html \
+                          /workspace || true
+                    """
+                    
+                    echo '✓ Scan SCA Trivy (code source) terminé'
+                }
+            }
+        }
+        
+        stage('🐳 Build Image Docker') {
+            steps {
+                echo '================================================'
+                echo '🐳 Construction de l\'image Docker'
+                echo '================================================'
+                script {
+                    sh """
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                    """
+                    echo "✓ Image construite: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                }
+            }
+        }
+        
+        stage('💎 SCA - Trivy (Image Docker)') {
+            steps {
+                echo '================================================'
+                echo '💎 Scan SCA avec Trivy - Image Docker'
+                echo '================================================'
+                script {
+                    // 1. Scan des vulnérabilités
+                    echo '→ Scan des vulnérabilités de l\'image...'
+                    sh """
+                        docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          -v "\${WORKSPACE}/${REPORT_DIR}:/output" \
+                          aquasec/trivy:latest \
+                          image --scanners vuln \
+                          --format json \
+                          --output /output/trivy-image-vuln.json \
+                          ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    """
+                    
+                    // 2. Scan des secrets
+                    echo '→ Scan des secrets dans l\'image...'
+                    sh """
+                        docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          -v "\${WORKSPACE}/${REPORT_DIR}:/output" \
+                          aquasec/trivy:latest \
+                          image --scanners secret \
+                          --format json \
+                          --output /output/trivy-image-secrets.json \
+                          ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    """
+                    
+                    // 3. Scan des misconfigurations
+                    echo '→ Scan des misconfigurations...'
+                    sh """
+                        docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          -v "\${WORKSPACE}/${REPORT_DIR}:/output" \
+                          aquasec/trivy:latest \
+                          image --scanners misconfig \
+                          --format json \
+                          --output /output/trivy-image-misconfig.json \
+                          ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    """
+                    
+                    // 4. Rapport SARIF
+                    sh """
+                        docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          -v "\${WORKSPACE}/${REPORT_DIR}:/output" \
+                          aquasec/trivy:latest \
+                          image --scanners vuln,secret,misconfig \
+                          --format sarif \
+                          --output /output/trivy-image-full.sarif \
+                          ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    """
+                    
+                    // 5. Rapport HTML
+                    sh """
+                        docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          -v "\${WORKSPACE}/${REPORT_DIR}:/output" \
+                          aquasec/trivy:latest \
+                          image --scanners vuln,secret,misconfig \
+                          --format template --template "@contrib/html.tpl" \
+                          --output /output/trivy-image-report.html \
+                          ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    """
+                    
+                    // 6. Afficher résumé
+                    echo '→ Résumé des vulnérabilités:'
+                    sh """
+                        docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          aquasec/trivy:latest \
+                          image --scanners vuln \
+                          --format table \
+                          --severity HIGH,CRITICAL \
+                          ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    """
+                    
+                    echo '✓ Scan SCA Trivy (image Docker) terminé'
+                }
+            }
+        }
+        
+        stage('🛡️ Vérification Seuils Sécurité') {
+            steps {
+                echo '================================================'
+                echo '🛡️ Vérification des seuils de sécurité'
+                echo '================================================'
+                script {
+                    def reportFile = "${WORKSPACE}/${REPORT_DIR}/trivy-image-vuln.json"
+                    
+                    if (fileExists(reportFile)) {
+                        def jsonReport = readJSON file: reportFile
+                        def criticalCount = 0
+                        def highCount = 0
+                        
+                        jsonReport.Results?.each { result ->
+                            result.Vulnerabilities?.each { vuln ->
+                                if (vuln.Severity == 'CRITICAL') {
+                                    criticalCount++
+                                } else if (vuln.Severity == 'HIGH') {
+                                    highCount++
+                                }
+                            }
+                        }
+                        
+                        echo "📊 Résumé des vulnérabilités:"
+                        echo "   🔴 CRITICAL: ${criticalCount}"
+                        echo "   🟠 HIGH: ${highCount}"
+                        
+                        if (env.FAIL_ON_CRITICAL == 'true' && criticalCount > env.MAX_CRITICAL_VULNS.toInteger()) {
+                            error("❌ Build échoué: ${criticalCount} vulnérabilités CRITICAL détectées (seuil: ${env.MAX_CRITICAL_VULNS})")
+                        }
+                        
+                        if (highCount > env.MAX_HIGH_VULNS.toInteger()) {
+                            unstable(message: "⚠️ ${highCount} vulnérabilités HIGH détectées (seuil: ${env.MAX_HIGH_VULNS})")
+                        }
+                        
+                        echo '✓ Vérification des seuils terminée'
+                    } else {
+                        echo '⚠️ Rapport Trivy non trouvé, impossible de vérifier les seuils'
+                    }
+                }
+            }
+        }
+        
+        stage('☁️ Push Docker Image') {
+            when {
+                expression { 
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS' 
+                }
+            }
+            steps {
+                echo '================================================'
+                echo '☁️ Push de l\'image Docker vers le registry'
+                echo '================================================'
+                script {
+                    try {
+                        withCredentials([usernamePassword(
+                            credentialsId: "${DOCKER_CREDENTIALS_ID}",
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )]) {
+                            sh """
+                                echo \$DOCKER_PASS | docker login ${DOCKER_REGISTRY} -u \$DOCKER_USER --password-stdin
+                                docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}
+                                docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest
+                                docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}
+                                docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest
+                                docker logout ${DOCKER_REGISTRY}
+                            """
+                            echo "✓ Image poussée vers ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Erreur lors du push: ${e.message}"
+                        echo "Vérifiez que les credentials '${DOCKER_CREDENTIALS_ID}' sont configurés dans Jenkins"
+                        throw e
+                    }
+                }
+            }
+        }
+        
+        stage('📊 Archiver les Rapports') {
+            steps {
+                echo '================================================'
+                echo '📊 Archivage des rapports de sécurité'
+                echo '================================================'
+                script {
+                    archiveArtifacts artifacts: "${REPORT_DIR}/**/*", 
+                                   allowEmptyArchive: false,
+                                   fingerprint: true
+                    
                     publishHTML([
-                        allowMissing: true,
+                        allowMissing: false,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
-                        reportDir: 'reports',
-                        reportFiles: 'bandit-summary.html',
-                        reportName: 'Bandit Summary'
+                        reportDir: "${REPORT_DIR}",
+                        reportFiles: 'bandit-report.html,trivy-source-report.html,trivy-image-report.html',
+                        reportName: 'Security Reports',
+                        reportTitles: 'Bandit SAST, Trivy SCA Source, Trivy SCA Image'
                     ])
+                    
+                    echo '✓ Rapports archivés avec succès'
                 }
             }
         }
     }
     
     post {
-        always {
-            echo '🧹 Archiving Bandit reports...'
-            archiveArtifacts artifacts: 'reports/*', allowEmptyArchive: true
-        }
         success {
-            echo '✅ Bandit scan completed successfully!'
-            echo '📊 Check the "Bandit Security Report" in the Jenkins UI'
+            echo '###############################################'
+            echo '#                                             #'
+            echo '#   ✓ Pipeline terminé avec succès!           #'
+            echo '#                                             #'
+            echo '###############################################'
+            echo ''
+            echo "Image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}"
+            echo "Rapports disponibles dans: ${REPORT_DIR}/"
+        }
+        unstable {
+            echo '###############################################'
+            echo '#                                             #'
+            echo '#   ⚠️  Pipeline instable (warnings)          #'
+            echo '#                                             #'
+            echo '###############################################'
         }
         failure {
-            echo '❌ Bandit scan encountered issues!'
-            echo '📋 Check the console output for error details'
+            echo '###############################################'
+            echo '#                                             #'
+            echo '#   ✗ Pipeline échoué!                        #'
+            echo '#                                             #'
+            echo '###############################################'
+            echo ''
+            echo 'Consultez les rapports de sécurité pour plus de détails'
+        }
+        always {
+            echo 'Nettoyage des ressources...'
+            script {
+                try {
+                    sh "docker image prune -f"
+                } catch (Exception e) {
+                    echo "⚠️ Erreur lors du nettoyage: ${e.message}"
+                }
+            }
         }
     }
 }
