@@ -55,25 +55,34 @@ pipeline {
                 // Créer dossier pour les rapports dans le conteneur
                 sh "docker exec ${containerName} mkdir -p /tmp/reports"
                 
-                // Scanner avec Bandit
+                // Vérifier la structure des dossiers montés
+                echo '=== Vérification de la structure ==='
+                sh "docker exec ${containerName} ls -la /src/"
+                sh "docker exec ${containerName} find /src -type d -maxdepth 2"
+                
+                // Scanner avec Bandit (scanner TOUT /src sauf exclusions)
                 echo '=== Scanning avec Bandit ==='
                 sh """
-                    docker exec ${containerName} bandit -r /src/bad /src/good /src/utils \
+                    docker exec ${containerName} bandit -r /src \
+                        -x /src/.git \
                         -f html -o /tmp/reports/bandit-report.html || true
                 """
                 
                 sh """
-                    docker exec ${containerName} bandit -r /src/bad /src/good /src/utils \
+                    docker exec ${containerName} bandit -r /src \
+                        -x /src/.git \
                         -f json -o /tmp/reports/bandit-report.json || true
                 """
                 
                 sh """
-                    docker exec ${containerName} bandit -r /src/bad /src/good /src/utils \
+                    docker exec ${containerName} bandit -r /src \
+                        -x /src/.git \
                         -f txt -o /tmp/reports/bandit-report.txt || true
                 """
                 
                 sh """
-                    docker exec ${containerName} bandit -r /src/bad /src/good /src/utils \
+                    docker exec ${containerName} bandit -r /src \
+                        -x /src/.git \
                         -f csv -o /tmp/reports/bandit-report.csv || true
                 """
                 
