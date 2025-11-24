@@ -24,6 +24,13 @@ pipeline {
                 }
             }
         }
+
+        stage('📁 Vérifier fichiers Python') {
+            steps {
+                echo "Listing Python files in workspace:"
+                sh 'find . -name "*.py"'
+            }
+        }
         
         stage('🔍 SAST - Bandit') {
             steps {
