@@ -99,20 +99,68 @@ pipeline {
                 sh "docker rm ${containerName} || true"
             }
             
-            // Vérifier les rapports dans Jenkins workspace
-            echo '→ Vérification des rapports dans Jenkins workspace:'
-            sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
-            
-            if (fileExists("${REPORT_DIR}/bandit-report.html")) {
-                echo '✓ Rapports Bandit générés avec succès!'
-            } else {
-                echo '⚠️  Attention: bandit-report.html non trouvé'
+                // Vérifier les rapports dans Jenkins workspace
+                echo '→ Vérification des rapports dans Jenkins workspace:'
+                sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
+                
+                if (fileExists("${REPORT_DIR}/bandit-report.json")) {
+                    // Lire et analyser le rapport JSON
+                    def banditReport = readJSON file: "${REPORT_DIR}/bandit-report.json"
+                    def metrics = banditReport.metrics._totals
+                    
+                    echo '✓ Rapports Bandit générés avec succès!'
+                    echo ''
+                    echo '┌─────────────────────────────────────────────────────┐'
+                    echo '│       📊 RÉSUMÉ DE L\'ANALYSE BANDIT SAST           │'
+                    echo '└─────────────────────────────────────────────────────┘'
+                    echo ''
+                    echo "📁 Code scanné:"
+                    echo "   • Lignes de code analysées: ${metrics.loc}"
+                    echo "   • Fichiers Python: ${banditReport.results.size()} vulnérabilités détectées"
+                    echo ''
+                    echo '🔍 Vulnérabilités par SÉVÉRITÉ:'
+                    echo "   🔴 HIGH     : ${metrics.'SEVERITY.HIGH'}"
+                    echo "   🟠 MEDIUM   : ${metrics.'SEVERITY.MEDIUM'}"
+                    echo "   🟡 LOW      : ${metrics.'SEVERITY.LOW'}"
+                    echo ''
+                    echo '🎯 Vulnérabilités par CONFIANCE:'
+                    echo "   ✅ HIGH     : ${metrics.'CONFIDENCE.HIGH'}"
+                    echo "   ⚠️  MEDIUM   : ${metrics.'CONFIDENCE.MEDIUM'}"
+                    echo "   ❓ LOW      : ${metrics.'CONFIDENCE.LOW'}"
+                    echo ''
+                    
+                    def totalIssues = metrics.'SEVERITY.HIGH' + metrics.'SEVERITY.MEDIUM' + metrics.'SEVERITY.LOW'
+                    
+                    if (totalIssues > 0) {
+                        echo "⚠️  TOTAL: ${totalIssues} vulnérabilités détectées"
+                        echo ''
+                        echo '📄 Consultez le rapport HTML pour plus de détails'
+                        
+                        // Résumé des 5 vulnérabilités les plus critiques
+                        def criticalIssues = banditReport.results.findAll { 
+                            it.issue_severity == 'HIGH' 
+                        }.take(5)
+                        
+                        if (criticalIssues.size() > 0) {
+                            echo ''
+                            echo '🚨 Top vulnérabilités critiques (HIGH):'
+                            criticalIssues.eachWithIndex { issue, idx ->
+                                def filename = issue.filename.replaceAll('/app/', '')
+                                echo "   ${idx + 1}. [${issue.test_id}] ${issue.issue_text}"
+                                echo "      → ${filename}:${issue.line_number}"
+                            }
+                        }
+                    } else {
+                        echo '✅ Aucune vulnérabilité détectée'
+                    }
+                    echo ''
+                    echo '═════════════════════════════════════════════════════'
+                } else {
+                    echo '⚠️  Attention: bandit-report.json non trouvé'
+                }
             }
         }
-    }
-}
-
-        stage('📊 Archiver les Rapports Bandit'){
+    }        stage('📊 Archiver les Rapports Bandit'){
             steps {
                 echo '================================================'
                 echo '📊 Archivage des rapports Bandit'
@@ -141,13 +189,26 @@ pipeline {
     
     post {
         success {
-            echo '✓ Pipeline terminé avec succès!'
+            echo ''
+            echo '╔═══════════════════════════════════════════════════════╗'
+            echo '║   ✅ PIPELINE TERMINÉ AVEC SUCCÈS                     ║'
+            echo '╚═══════════════════════════════════════════════════════╝'
+            echo ''
+            echo '📊 Rapports disponibles dans les artifacts Jenkins'
+            echo '📄 Consultez le rapport HTML pour les détails complets'
         }
         failure {
-            echo '✗ Pipeline échoué - Vérifiez les logs'
+            echo ''
+            echo '╔═══════════════════════════════════════════════════════╗'
+            echo '║   ❌ PIPELINE ÉCHOUÉ                                  ║'
+            echo '╚═══════════════════════════════════════════════════════╝'
+            echo ''
+            echo '🔍 Vérifiez les logs ci-dessus pour plus de détails'
         }
         always {
-            echo 'Pipeline SAST Bandit terminé'
+            echo ''
+            echo '🏁 Pipeline SAST Bandit terminé'
+            echo "⏱️  Durée: ${currentBuild.durationString.replace(' and counting', '')}"
         }
     }
 }
