@@ -104,52 +104,35 @@ pipeline {
                 sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
                 
                 if (fileExists("${REPORT_DIR}/bandit-report.json")) {
-                    // Lire et analyser le rapport JSON
-                    def banditReport = readJSON file: "${REPORT_DIR}/bandit-report.json"
-                    def metrics = banditReport.metrics._totals
-                    
                     echo '✓ Rapports Bandit générés avec succès!'
                     echo ''
                     echo '┌─────────────────────────────────────────────────────┐'
                     echo '│       📊 RÉSUMÉ DE L\'ANALYSE BANDIT SAST           │'
                     echo '└─────────────────────────────────────────────────────┘'
                     echo ''
+                    
+                    // Extraire les statistiques avec grep et wc
+                    def highSeverity = sh(script: "grep -c '\"issue_severity\": \"HIGH\"' ${REPORT_DIR}/bandit-report.json || echo 0", returnStdout: true).trim()
+                    def mediumSeverity = sh(script: "grep -c '\"issue_severity\": \"MEDIUM\"' ${REPORT_DIR}/bandit-report.json || echo 0", returnStdout: true).trim()
+                    def lowSeverity = sh(script: "grep -c '\"issue_severity\": \"LOW\"' ${REPORT_DIR}/bandit-report.json || echo 0", returnStdout: true).trim()
+                    def totalLoc = sh(script: "grep '\"loc\":' ${REPORT_DIR}/bandit-report.json | grep '_totals' -A1 | tail -1 | grep -o '[0-9]*' | head -1", returnStdout: true).trim()
+                    
+                    def totalIssues = (highSeverity as Integer) + (mediumSeverity as Integer) + (lowSeverity as Integer)
+                    
                     echo "📁 Code scanné:"
-                    echo "   • Lignes de code analysées: ${metrics.loc}"
-                    echo "   • Fichiers Python: ${banditReport.results.size()} vulnérabilités détectées"
+                    echo "   • Lignes de code analysées: ${totalLoc}"
+                    echo "   • Total vulnérabilités: ${totalIssues}"
                     echo ''
                     echo '🔍 Vulnérabilités par SÉVÉRITÉ:'
-                    echo "   🔴 HIGH     : ${metrics.'SEVERITY.HIGH'}"
-                    echo "   🟠 MEDIUM   : ${metrics.'SEVERITY.MEDIUM'}"
-                    echo "   🟡 LOW      : ${metrics.'SEVERITY.LOW'}"
+                    echo "   🔴 HIGH     : ${highSeverity}"
+                    echo "   🟠 MEDIUM   : ${mediumSeverity}"
+                    echo "   🟡 LOW      : ${lowSeverity}"
                     echo ''
-                    echo '🎯 Vulnérabilités par CONFIANCE:'
-                    echo "   ✅ HIGH     : ${metrics.'CONFIDENCE.HIGH'}"
-                    echo "   ⚠️  MEDIUM   : ${metrics.'CONFIDENCE.MEDIUM'}"
-                    echo "   ❓ LOW      : ${metrics.'CONFIDENCE.LOW'}"
-                    echo ''
-                    
-                    def totalIssues = metrics.'SEVERITY.HIGH' + metrics.'SEVERITY.MEDIUM' + metrics.'SEVERITY.LOW'
                     
                     if (totalIssues > 0) {
                         echo "⚠️  TOTAL: ${totalIssues} vulnérabilités détectées"
                         echo ''
-                        echo '📄 Consultez le rapport HTML pour plus de détails'
-                        
-                        // Résumé des 5 vulnérabilités les plus critiques
-                        def criticalIssues = banditReport.results.findAll { 
-                            it.issue_severity == 'HIGH' 
-                        }.take(5)
-                        
-                        if (criticalIssues.size() > 0) {
-                            echo ''
-                            echo '🚨 Top vulnérabilités critiques (HIGH):'
-                            criticalIssues.eachWithIndex { issue, idx ->
-                                def filename = issue.filename.replaceAll('/app/', '')
-                                echo "   ${idx + 1}. [${issue.test_id}] ${issue.issue_text}"
-                                echo "      → ${filename}:${issue.line_number}"
-                            }
-                        }
+                        echo '📄 Consultez le rapport HTML pour tous les détails'
                     } else {
                         echo '✅ Aucune vulnérabilité détectée'
                     }
