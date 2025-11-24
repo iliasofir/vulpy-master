@@ -28,7 +28,7 @@ pipeline {
             }
         }
         
-                stage('🔍 SAST - Bandit') {
+        stage('🔍 SAST - Bandit') {
             steps {
                 echo '================================================'
                 echo '🔍 Analyse statique du code avec Bandit'
@@ -36,12 +36,14 @@ pipeline {
                 script {
                     echo '→ Exécution de Bandit via Docker...'
 
+                    // Créer le répertoire avec permissions ouvertes
                     sh """
-                        # Créer le répertoire avec permissions ouvertes
-                        sudo mkdir -p ${WORKSPACE}/${REPORT_DIR}
-                        sudo chmod -R 777 ${WORKSPACE}/${REPORT_DIR}
-                        
-                        # Exécuter Docker
+                        mkdir -p ${WORKSPACE}/${REPORT_DIR}
+                        chmod 777 ${WORKSPACE}/${REPORT_DIR}
+                    """
+                    
+                    // Exécuter Docker en mode root avec volume en lecture/écriture
+                    sh """
                         docker run --rm \
                         -v "${WORKSPACE}:/src:rw" \
                         -w /src \
@@ -49,20 +51,33 @@ pipeline {
                         python:3.11-slim \
                         bash -c '
                             pip install bandit -q && \
+                            echo "Scanning with Bandit..." && \
                             bandit -r bad good utils -f html -o ${REPORT_DIR}/bandit-report.html || true && \
                             bandit -r bad good utils -f json -o ${REPORT_DIR}/bandit-report.json || true && \
                             bandit -r bad good utils -f txt -o ${REPORT_DIR}/bandit-report.txt || true && \
                             bandit -r bad good utils -f csv -o ${REPORT_DIR}/bandit-report.csv || true && \
+                            echo "Files created in container:" && \
+                            ls -la ${REPORT_DIR}/ && \
                             chmod -R 777 ${REPORT_DIR}
                         '
-                        
-                        # Forcer les permissions après Docker
-                        sudo chmod -R 755 ${WORKSPACE}/${REPORT_DIR}
-                        sudo chown -R jenkins:jenkins ${WORKSPACE}/${REPORT_DIR}
-                        
-                        echo "Fichiers créés:"
-                        ls -lah ${WORKSPACE}/${REPORT_DIR}/
                     """
+                    
+                    // Vérifier immédiatement après
+                    sh """
+                        echo "=== Vérification depuis Jenkins ==="
+                        ls -lah ${WORKSPACE}/${REPORT_DIR}/
+                        echo ""
+                        echo "=== Recherche fichiers bandit ==="
+                        find ${WORKSPACE}/${REPORT_DIR}/ -name "bandit-*" -type f || echo "Aucun fichier trouvé"
+                    """
+                    
+                    if (fileExists("${REPORT_DIR}/bandit-report.html")) {
+                        echo '✓ Rapports générés avec succès'
+                    } else {
+                        echo '⚠️ ATTENTION: Rapports non trouvés!'
+                    }
+                    
+                    echo '✓ Analyse SAST Bandit terminée'
                 }
             }
         }
