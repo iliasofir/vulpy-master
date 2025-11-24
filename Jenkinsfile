@@ -34,21 +34,21 @@ pipeline {
                     echo '→ Exécution de Bandit via Docker...'
                     
                     sh """
-docker run --rm -u $(id -u):$(id -g) \
-  -v "\${WORKSPACE}:/src" \
-  -w /src \
-  python:3.11-slim \
-  bash -c "
-    pip install bandit -q && \
-    mkdir -p ${REPORT_DIR} && \
-    echo 'Scanning with Bandit...' && \
-    bandit -r . -f json -o ${REPORT_DIR}/bandit-report.json || true && \
-    bandit -r . -f html -o ${REPORT_DIR}/bandit-report.html || true && \
-    bandit -r . -f txt -o ${REPORT_DIR}/bandit-report.txt || true && \
-    bandit -r . -f csv -o ${REPORT_DIR}/bandit-report.csv || true && \
-    ls -la ${REPORT_DIR}/ && \
-    echo 'Bandit reports generated'
-  "
+                        docker run --rm -u $(id -u):$(id -g) \
+                        -v "\${WORKSPACE}:/src" \
+                        -w /src \
+                        python:3.11-slim \
+                        bash -c "
+                            pip install bandit -q && \
+                            mkdir -p ${REPORT_DIR} && \
+                            echo 'Scanning with Bandit...' && \
+                            bandit -r . -f json -o ${REPORT_DIR}/bandit-report.json || true && \
+                            bandit -r . -f html -o ${REPORT_DIR}/bandit-report.html || true && \
+                            bandit -r . -f txt -o ${REPORT_DIR}/bandit-report.txt || true && \
+                            bandit -r . -f csv -o ${REPORT_DIR}/bandit-report.csv || true && \
+                            ls -la ${REPORT_DIR}/ && \
+                            echo 'Bandit reports generated'
+                        "
 """
 
                     
