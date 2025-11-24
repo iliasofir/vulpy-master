@@ -36,64 +36,67 @@ pipeline {
         script {
             echo '→ Exécution de Bandit via Docker...'
             
-            // Créer un conteneur temporaire avec nom
-            def containerId = sh(
-                script: """
-                    docker run -d \
-                    -v "\${WORKSPACE}:/workspace:rw" \
-                    -w /workspace \
-                    python:3.11-slim \
-                    tail -f /dev/null
-                """,
-                returnStdout: true
-            ).trim()
-            
-            echo "Container ID: ${containerId}"
+            // Créer un conteneur nommé
+            def containerName = "bandit-scan-${BUILD_NUMBER}"
             
             try {
-                // Installer Bandit dans le conteneur
-                sh "docker exec ${containerId} pip install bandit -q"
+                // Créer et démarrer le conteneur
+                sh """
+                    docker run -d --name ${containerName} \
+                    -v "\${WORKSPACE}:/src:ro" \
+                    -w /tmp \
+                    python:3.11-slim \
+                    tail -f /dev/null
+                """
                 
-                // Créer le dossier reports
-                sh "docker exec ${containerId} mkdir -p /workspace/${REPORT_DIR}"
+                // Installer Bandit
+                sh "docker exec ${containerName} pip install bandit -q"
+                
+                // Créer dossier pour les rapports dans le conteneur
+                sh "docker exec ${containerName} mkdir -p /tmp/reports"
                 
                 // Scanner avec Bandit
                 echo '=== Scanning avec Bandit ==='
                 sh """
-                    docker exec ${containerId} bandit -r /workspace \
-                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
-                        -f html -o /workspace/${REPORT_DIR}/bandit-report.html || true
+                    docker exec ${containerName} bandit -r /src \
+                        -x '/src/.git,/src/venv,/src/${REPORT_DIR}' \
+                        -f html -o /tmp/reports/bandit-report.html || true
                 """
                 
                 sh """
-                    docker exec ${containerId} bandit -r /workspace \
-                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
-                        -f json -o /workspace/${REPORT_DIR}/bandit-report.json || true
+                    docker exec ${containerName} bandit -r /src \
+                        -x '/src/.git,/src/venv,/src/${REPORT_DIR}' \
+                        -f json -o /tmp/reports/bandit-report.json || true
                 """
                 
                 sh """
-                    docker exec ${containerId} bandit -r /workspace \
-                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
-                        -f txt -o /workspace/${REPORT_DIR}/bandit-report.txt || true
+                    docker exec ${containerName} bandit -r /src \
+                        -x '/src/.git,/src/venv,/src/${REPORT_DIR}' \
+                        -f txt -o /tmp/reports/bandit-report.txt || true
                 """
                 
                 sh """
-                    docker exec ${containerId} bandit -r /workspace \
-                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
-                        -f csv -o /workspace/${REPORT_DIR}/bandit-report.csv || true
+                    docker exec ${containerName} bandit -r /src \
+                        -x '/src/.git,/src/venv,/src/${REPORT_DIR}' \
+                        -f csv -o /tmp/reports/bandit-report.csv || true
                 """
                 
-                // Vérifier les rapports dans le conteneur
-                sh "docker exec ${containerId} ls -lah /workspace/${REPORT_DIR}/"
+                // Vérifier que les rapports sont créés dans le conteneur
+                sh "docker exec ${containerName} ls -lah /tmp/reports/"
+                
+                // COPIER les rapports depuis le conteneur vers Jenkins
+                echo '→ Copie des rapports depuis le conteneur...'
+                sh "docker cp ${containerName}:/tmp/reports/. \${WORKSPACE}/${REPORT_DIR}/"
                 
             } finally {
-                // Arrêter et supprimer le conteneur
-                sh "docker stop ${containerId} || true"
-                sh "docker rm ${containerId} || true"
+                // Nettoyer le conteneur
+                sh "docker stop ${containerName} || true"
+                sh "docker rm ${containerName} || true"
             }
             
+            // Vérifier les rapports dans Jenkins workspace
             echo '→ Vérification des rapports dans Jenkins workspace:'
-            sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/ || echo 'Dossier vide'"
+            sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
             
             if (fileExists("${REPORT_DIR}/bandit-report.html")) {
                 echo '✓ Rapports Bandit générés avec succès!'
