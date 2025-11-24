@@ -29,63 +29,61 @@ pipeline {
         }
         
         stage('🔍 SAST - Bandit') {
-            steps {
-                echo '================================================'
-                echo '🔍 Analyse statique du code avec Bandit'
-                echo '================================================'
-                script {
-                    echo '→ Exécution de Bandit via Docker...'
+        steps {
+            echo '================================================'
+            echo '🔍 Analyse statique du code avec Bandit'
+            echo '================================================'
+            script {
+                echo '→ Exécution de Bandit via Docker...'
 
-                    // Récupérer UID et GID pour éviter les erreurs Docker
-                    def uid = sh(script: "id -u", returnStdout: true).trim()
-                    def gid = sh(script: "id -g", returnStdout: true).trim()
+                // Créer le répertoire avec les bonnes permissions
+                sh "mkdir -p ${WORKSPACE}/${REPORT_DIR}"
 
-                    sh """
-                        docker run --rm -u ${uid}:${gid} \
-                        -v "${WORKSPACE}:/src" \
-                        -w /src \
-                        python:3.11-slim \
-                        bash -c '
-                            pip install bandit -q && \
-                            mkdir -p "${REPORT_DIR}" && \
-                            echo "Scanning with Bandit..." && \
-                            bandit -r bad good utils \
-                                -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
-                            bandit -r bad good utils \
-                                -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
-                            bandit -r bad good utils \
-                                -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
-                            bandit -r bad good utils \
-                                -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
-                            chmod -R 755 "${REPORT_DIR}" && \
-                            echo "Files in ${REPORT_DIR}:" && ls -la "${REPORT_DIR}" && \
-                            echo "Bandit reports generated"
-                        '
-                    """
+                sh """
+                    docker run --rm \
+                    -v "${WORKSPACE}:/src" \
+                    -w /src \
+                    python:3.11-slim \
+                    bash -c '
+                        pip install bandit -q && \
+                        mkdir -p "${REPORT_DIR}" && \
+                        echo "Scanning with Bandit..." && \
+                        bandit -r bad good utils \
+                            -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
+                        bandit -r bad good utils \
+                            -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
+                        bandit -r bad good utils \
+                            -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
+                        bandit -r bad good utils \
+                            -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
+                        echo "Files created in container:" && \
+                        ls -la "${REPORT_DIR}/" && \
+                        echo "Changing permissions..." && \
+                        chmod -R 777 "${REPORT_DIR}" && \
+                        chown -R $(stat -c "%u:%g" /src) "${REPORT_DIR}" || true
+                    '
+             """
 
-                    // Vérifier que les rapports ont été générés
-                    sh "ls -la ${REPORT_DIR}/ || echo 'Report directory empty'"
-                    
-                    if (fileExists("${REPORT_DIR}/bandit-report.html")) {
-                        echo '✓ Rapport HTML généré avec succès'
-                    } else {
-                        echo '⚠️  Rapport HTML non trouvé'
-                    }
-                    
-                    // Résumé rapide
-                    echo '→ Affichage du résumé Bandit:'
-                    sh """
-                        docker run --rm \
-                          -v "${WORKSPACE}:/src" \
-                          -w /src \
-                          python:3.11-slim \
-                          bash -c 'pip install bandit -q && bandit -r bad good utils --severity-level medium || true'
-                    """
-                    
-                    echo '✓ Analyse SAST Bandit terminée'
-                }
+            // Vérifier APRÈS Docker depuis Jenkins
+            echo '→ Vérification des fichiers créés:'
+            sh """
+                echo "Contenu du répertoire ${REPORT_DIR} depuis Jenkins:"
+                ls -lah ${WORKSPACE}/${REPORT_DIR}/ || echo "Répertoire vide!"
+                echo ""
+                echo "Permissions du répertoire:"
+                ls -ld ${WORKSPACE}/${REPORT_DIR}/
+            """
+            
+            if (fileExists("${WORKSPACE}/${REPORT_DIR}/bandit-report.html")) {
+                echo '✓ Rapport HTML généré avec succès'
+            } else {
+                echo '⚠️  Rapport HTML non trouvé'
             }
+            
+            echo '✓ Analyse SAST Bandit terminée'
         }
+    }
+}
 
         stage('📊 Archiver les Rapports Bandit'){
             steps {
