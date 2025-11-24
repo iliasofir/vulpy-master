@@ -28,12 +28,12 @@ pipeline {
             }
         }
         
-       stage('🔍 SAST - Bandit') {
-    steps {
-        echo '================================================'
-        echo '🔍 Analyse statique du code avec Bandit'
-        echo '================================================'
-        script {
+        stage('🔍 SAST - Bandit') {
+            steps {
+                echo '================================================'
+                echo '🔍 Analyse statique du code avec Bandit'
+                echo '================================================'
+                script {
             echo '→ Exécution de Bandit via Docker...'
             
             // Créer un conteneur nommé
@@ -160,7 +160,8 @@ pipeline {
                 }
             }
         }
-    }        stage('📊 Archiver les Rapports Bandit'){
+        
+        stage('📊 Archiver les Rapports Bandit') {
             steps {
                 echo '================================================'
                 echo '📊 Archivage des rapports Bandit'
