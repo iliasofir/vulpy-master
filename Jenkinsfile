@@ -3,47 +3,34 @@ pipeline {
 
     stages {
         stage('SAST - Bandit (Static Code Analysis)') {
-            steps {
-                echo '🔍 Running Bandit via Docker...'
-                sh '''
-                    # Create reports directory
-                    mkdir -p reports
-                    
-                    # Run Bandit in Docker container
-                    docker run --rm \
-                      -v $(pwd):/src \
-                      -w /src \
-                      python:3.9-slim \
-                      bash -c "
-                        pip install bandit && \
-                        echo '=== Bandit Security Scan ===' && \
-                        echo 'Scanning directories: bad/, good/, utils/' && \
-                        bandit -r bad/ good/ utils/ -f json -o reports/bandit-report.json || true && \
-                        bandit -r bad/ good/ utils/ -f txt -o reports/bandit-report.txt || true && \
-                        bandit -r bad/ good/ utils/ -f html -o reports/bandit-report.html || true && \
-                        bandit -r bad/ good/ utils/ -f csv -o reports/bandit-report.csv || true && \
-                        echo '' && \
-                        echo '=== Bandit Scan Results ===' && \
-                        bandit -r bad/ good/ utils/ --severity-level medium || true && \
-                        echo '' && \
-                        echo '✅ Bandit scan completed'
-                      "
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/bandit-*', allowEmptyArchive: true
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'reports',
-                        reportFiles: 'bandit-report.html',
-                        reportName: 'Bandit Security Report'
-                    ])
-                }
-            }
+    agent {
+        docker {
+            image 'python:3.9-slim'
+            args  '-v $PWD:/src -w /src'
         }
+    }
+    steps {
+        echo '🔍 Running Bandit inside Docker...'
+        sh '''
+            mkdir -p reports
+            pip install --no-cache-dir bandit
+
+            bandit -r bad/ good/ utils/ -f json -o reports/bandit-report.json || true
+            bandit -r bad/ good/ utils/ -f txt -o reports/bandit-report.txt || true
+            bandit -r bad/ good/ utils/ -f html -o reports/bandit-report.html || true
+            bandit -r bad/ good/ utils/ -f csv -o reports/bandit-report.csv || true
+
+            echo '=== Bandit Scan Results ==='
+            bandit -r bad/ good/ utils/ --severity-level medium || true
+            echo '✅ Bandit scan completed'
+        '''
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/bandit-*', allowEmptyArchive: true
+        }
+    }
+}
         
         stage('Generate Summary Report') {
             steps {
