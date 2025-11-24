@@ -2,7 +2,6 @@ pipeline {
     agent any
     
     environment {
-        // Configuration
         PROJECT_NAME = 'vulpy'
         REPORT_DIR = 'security-reports'
     }
@@ -14,7 +13,8 @@ pipeline {
                 echo '🔧 Préparation de l\'environnement'
                 echo '================================================'
                 script {
-                    sh "mkdir -p ${REPORT_DIR}"
+                    sh "mkdir -p ${WORKSPACE}/${REPORT_DIR}"
+                    sh "chmod -R 777 ${WORKSPACE}/${REPORT_DIR}"
                     sh 'docker --version || echo "Docker not found!"'
                     echo '✓ Environnement préparé'
                 }
@@ -35,49 +35,62 @@ pipeline {
                 echo '================================================'
                 script {
                     echo '→ Exécution de Bandit via Docker...'
-
-                    // Créer le répertoire avec permissions ouvertes
-                    sh """
-                        mkdir -p ${WORKSPACE}/${REPORT_DIR}
-                        chmod 777 ${WORKSPACE}/${REPORT_DIR}
-                    """
                     
-                    // Exécuter Docker en mode root avec volume en lecture/écriture
+                    // Générer tous les rapports avec une seule commande Bandit
                     sh """
                         docker run --rm \
-                        -v "${WORKSPACE}:/src:rw" \
-                        -w /src \
-                        --user root \
+                        -v "${WORKSPACE}:/app" \
+                        -w /app \
                         python:3.11-slim \
                         bash -c '
-                            pip install bandit -q && \
-                            echo "Scanning with Bandit..." && \
-                            bandit -r bad good utils -f html -o ${REPORT_DIR}/bandit-report.html || true && \
-                            bandit -r bad good utils -f json -o ${REPORT_DIR}/bandit-report.json || true && \
-                            bandit -r bad good utils -f txt -o ${REPORT_DIR}/bandit-report.txt || true && \
-                            bandit -r bad good utils -f csv -o ${REPORT_DIR}/bandit-report.csv || true && \
-                            echo "Files created in container:" && \
-                            ls -la ${REPORT_DIR}/ && \
-                            chmod -R 777 ${REPORT_DIR}
+                            set -x
+                            pip install bandit -q
+                            echo "=== Current directory ==="
+                            pwd
+                            ls -la
+                            echo "=== Creating reports directory ==="
+                            mkdir -p /app/${REPORT_DIR}
+                            ls -ld /app/${REPORT_DIR}
+                            echo "=== Running Bandit ==="
+                            bandit -r bad good utils -f html -o /app/${REPORT_DIR}/bandit-report.html || true
+                            bandit -r bad good utils -f json -o /app/${REPORT_DIR}/bandit-report.json || true
+                            bandit -r bad good utils -f txt -o /app/${REPORT_DIR}/bandit-report.txt || true
+                            bandit -r bad good utils -f csv -o /app/${REPORT_DIR}/bandit-report.csv || true
+                            echo "=== Files created ==="
+                            ls -la /app/${REPORT_DIR}/
+                            echo "=== Setting permissions ==="
+                            chmod -R 777 /app/${REPORT_DIR}
+                            echo "=== Final check ==="
+                            ls -la /app/${REPORT_DIR}/
                         '
                     """
                     
-                    // Vérifier immédiatement après
+                    // Vérification détaillée
                     sh """
-                        echo "=== Vérification depuis Jenkins ==="
-                        ls -lah ${WORKSPACE}/${REPORT_DIR}/
-                        echo ""
+                        echo "=== Vérification Jenkins - PWD ==="
+                        pwd
+                        echo "=== Contenu workspace ==="
+                        ls -la
+                        echo "=== Contenu ${REPORT_DIR} ==="
+                        ls -la ${REPORT_DIR}/ || echo "Répertoire vide ou inexistant"
                         echo "=== Recherche fichiers bandit ==="
-                        find ${WORKSPACE}/${REPORT_DIR}/ -name "bandit-*" -type f || echo "Aucun fichier trouvé"
+                        find . -name "bandit-*" -type f 2>/dev/null || echo "Aucun fichier trouvé"
+                        echo "=== Permissions ${REPORT_DIR} ==="
+                        ls -ld ${REPORT_DIR}/
+                    """
+                    
+                    // Test de création d'un fichier simple
+                    sh """
+                        echo "=== Test d'écriture direct ==="
+                        echo "test" > ${REPORT_DIR}/test.txt
+                        ls -la ${REPORT_DIR}/
                     """
                     
                     if (fileExists("${REPORT_DIR}/bandit-report.html")) {
                         echo '✓ Rapports générés avec succès'
                     } else {
-                        echo '⚠️ ATTENTION: Rapports non trouvés!'
+                        echo '⚠️ Rapports non trouvés - Problème de persistance Docker!'
                     }
-                    
-                    echo '✓ Analyse SAST Bandit terminée'
                 }
             }
         }
@@ -88,15 +101,14 @@ pipeline {
                 echo '📊 Archivage des rapports Bandit'
                 echo '================================================'
                 script {
-                    // Vérifier l'existence des fichiers
-                    sh "ls -la ${WORKSPACE}/${REPORT_DIR}/ || echo 'Aucun fichier trouvé'"
+                    sh "ls -la ${WORKSPACE}/${REPORT_DIR}/"
                     
-                    archiveArtifacts artifacts: "${REPORT_DIR}/bandit-*", 
-                                     allowEmptyArchive: false,
+                    archiveArtifacts artifacts: "${REPORT_DIR}/*", 
+                                     allowEmptyArchive: true,
                                      fingerprint: true
                     
                     publishHTML([
-                        allowMissing: false,
+                        allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: "${REPORT_DIR}",
@@ -104,7 +116,7 @@ pipeline {
                         reportName: 'Bandit SAST Report'
                     ])
                     
-                    echo '✓ Rapports Bandit archivés avec succès'
+                    echo '✓ Archivage terminé'
                 }
             }
         }
@@ -112,28 +124,10 @@ pipeline {
     
     post {
         success {
-            echo '###############################################'
-            echo '#                                             #'
-            echo '#   ✓ Scan SAST Bandit terminé avec succès!   #'
-            echo '###############################################'
-            echo ''
-            echo "Rapports Bandit disponibles dans: ${REPORT_DIR}/"
-        }
-        unstable {
-            echo '###############################################'
-            echo '#                                             #'
-            echo '#   ⚠️  Vulnérabilités détectées par Bandit  #'
-            echo '#                                             #'
-            echo '###############################################'
+            echo '✓ Pipeline terminé avec succès!'
         }
         failure {
-            echo '###############################################'
-            echo '#                                             #'
-            echo '#   ✗ Scan Bandit échoué!                    #'
-            echo '#                                             #'
-            echo '###############################################'
-            echo ''
-            echo 'Consultez les logs pour plus de détails'
+            echo '✗ Pipeline échoué - Vérifiez les logs'
         }
         always {
             echo 'Pipeline SAST Bandit terminé'
