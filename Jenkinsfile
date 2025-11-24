@@ -26,8 +26,8 @@ pipeline {
                 echo '================================================'
                 checkout([
                     $class: 'GitSCM',
-                    branches: [[name: '*/master']],
-                    userRemoteConfigs: [[url: 'https://github.com/fportantier/vulpy.git']]
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[url: 'https://github.com/iliasofir/vulpy-master.git']]
                 ])
             }
         }
@@ -57,24 +57,38 @@ pipeline {
                 script {
                     echo '→ Exécution de Bandit via Docker...'
                     
-                    def banditStatus = sh(
-                        script: """
-                            docker run --rm \
-                              -v "\${WORKSPACE}:/src" \
-                              -w /src \
-                              python:3.11-slim \
-                              bash -c "pip install bandit && \
-                                       bandit -r bad -f json -o ${REPORT_DIR}/bandit-report.json; \
-                                       bandit -r bad -f html -o ${REPORT_DIR}/bandit-report.html; \
-                                       bandit -r bad -f txt -o ${REPORT_DIR}/bandit-report.txt || true"
-                        """,
-                        returnStatus: true
-                    )
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/src" \
+                          -w /src \
+                          python:3.11-slim \
+                          bash -c "
+                            pip install bandit -q && \
+                            echo 'Scanning with Bandit...' && \
+                            bandit -r bad/ good/ utils/ -f json -o /src/${REPORT_DIR}/bandit-report.json || true && \
+                            bandit -r bad/ good/ utils/ -f html -o /src/${REPORT_DIR}/bandit-report.html || true && \
+                            bandit -r bad/ good/ utils/ -f txt -o /src/${REPORT_DIR}/bandit-report.txt || true && \
+                            bandit -r bad/ good/ utils/ -f csv -o /src/${REPORT_DIR}/bandit-report.csv || true && \
+                            echo 'Bandit reports generated in ${REPORT_DIR}/'
+                          "
+                    """
                     
-                    if (banditStatus != 0) {
-                        echo '⚠️  Bandit a détecté des problèmes de sécurité'
-                        unstable(message: 'Bandit found security issues')
+                    // Vérifier que les rapports ont été générés
+                    if (fileExists("${REPORT_DIR}/bandit-report.html")) {
+                        echo '✓ Rapport HTML généré avec succès'
+                    } else {
+                        error('❌ Échec de génération du rapport Bandit')
                     }
+                    
+                    // Afficher un résumé
+                    echo '→ Affichage du résumé Bandit:'
+                    sh """
+                        docker run --rm \
+                          -v "\${WORKSPACE}:/src" \
+                          -w /src \
+                          python:3.11-slim \
+                          bash -c "pip install bandit -q && bandit -r bad/ good/ utils/ --severity-level medium || true"
+                    """
                     
                     echo '✓ Analyse SAST Bandit terminée'
                 }
