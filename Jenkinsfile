@@ -28,7 +28,7 @@ pipeline {
             }
         }
         
-        stage('🔍 SAST - Bandit') {
+       stage('🔍 SAST - Bandit') {
     steps {
         echo '================================================'
         echo '🔍 Analyse statique du code avec Bandit'
@@ -43,65 +43,39 @@ pipeline {
                 python:3.11-slim \
                 bash -c '
                     pip install bandit -q
-                    
-                    echo "=== Contenu du workspace ==="
-                    ls -la /app/
-                    
-                    echo "=== Vérification des dossiers à scanner ==="
-                    ls -ld /app/bad /app/good /app/utils 2>/dev/null || echo "Dossiers non trouvés!"
-                    
-                    echo "=== Création répertoire rapports ==="
                     mkdir -p /app/${REPORT_DIR}
                     
-                    echo "=== Exécution Bandit sur les fichiers Python trouvés ==="
-                    
-                    # Scanner tous les fichiers .py récursivement
-                    find /app -name "*.py" -type f > /tmp/python_files.txt
-                    echo "Fichiers Python trouvés:"
-                    cat /tmp/python_files.txt
-                    
-                    # Exécuter Bandit sur TOUT le workspace
                     echo "=== Scanning avec Bandit ==="
-                    bandit -r /app/bad /app/good /app/utils \
+                    # Scanner TOUT le workspace récursivement
+                    bandit -r . \
+                        -x "./.git,./venv,./node_modules" \
                         -f html -o /app/${REPORT_DIR}/bandit-report.html 2>&1 || true
                     
-                    bandit -r /app/bad /app/good /app/utils \
+                    bandit -r . \
+                        -x "./.git,./venv,./node_modules" \
                         -f json -o /app/${REPORT_DIR}/bandit-report.json 2>&1 || true
                     
-                    bandit -r /app/bad /app/good /app/utils \
+                    bandit -r . \
+                        -x "./.git,./venv,./node_modules" \
                         -f txt -o /app/${REPORT_DIR}/bandit-report.txt 2>&1 || true
                     
-                    bandit -r /app/bad /app/good /app/utils \
+                    bandit -r . \
+                        -x "./.git,./venv,./node_modules" \
                         -f csv -o /app/${REPORT_DIR}/bandit-report.csv 2>&1 || true
+                    
+                    chmod -R 777 /app/${REPORT_DIR}
                     
                     echo "=== Rapports générés ==="
                     ls -lah /app/${REPORT_DIR}/
-                    
-                    echo "=== Permissions ==="
-                    chmod -R 777 /app/${REPORT_DIR}
-                    
-                    echo "=== Résumé rapide ==="
-                    bandit -r /app/bad /app/good /app/utils --severity-level low 2>&1 || true
                 '
             """
             
-            // Vérification finale
-            sh """
-                echo "=== Vérification finale depuis Jenkins ==="
-                ls -lah ${WORKSPACE}/${REPORT_DIR}/
-                
-                if [ -f "${WORKSPACE}/${REPORT_DIR}/bandit-report.html" ]; then
-                    echo "✓ Rapport HTML trouvé"
-                    wc -l ${WORKSPACE}/${REPORT_DIR}/bandit-report.html
-                else
-                    echo "✗ Rapport HTML non trouvé"
-                fi
-            """
+            sh "ls -lah ${WORKSPACE}/${REPORT_DIR}/"
             
             if (fileExists("${REPORT_DIR}/bandit-report.html")) {
-                echo '✓ Rapports Bandit générés avec succès'
+                echo '✓ Rapports Bandit générés avec succès!'
             } else {
-                echo '⚠️ Rapports non générés'
+                error '✗ Échec génération rapports'
             }
         }
     }
