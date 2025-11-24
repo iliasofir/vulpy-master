@@ -104,40 +104,19 @@ pipeline {
                 sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
                 
                 if (fileExists("${REPORT_DIR}/bandit-report.json")) {
-                    echo '✓ Rapports Bandit générés avec succès!'
-                    echo ''
-                    echo '┌─────────────────────────────────────────────────────┐'
-                    echo '│       📊 RÉSUMÉ DE L\'ANALYSE BANDIT SAST           │'
-                    echo '└─────────────────────────────────────────────────────┘'
-                    echo ''
-                    
-                    // Extraire les statistiques avec grep et wc
+                    // Extraire les statistiques
                     def highSeverity = sh(script: "grep -c '\"issue_severity\": \"HIGH\"' ${REPORT_DIR}/bandit-report.json || echo 0", returnStdout: true).trim()
                     def mediumSeverity = sh(script: "grep -c '\"issue_severity\": \"MEDIUM\"' ${REPORT_DIR}/bandit-report.json || echo 0", returnStdout: true).trim()
                     def lowSeverity = sh(script: "grep -c '\"issue_severity\": \"LOW\"' ${REPORT_DIR}/bandit-report.json || echo 0", returnStdout: true).trim()
                     def totalLoc = sh(script: "grep '\"loc\":' ${REPORT_DIR}/bandit-report.json | grep '_totals' -A1 | tail -1 | grep -o '[0-9]*' | head -1", returnStdout: true).trim()
-                    
                     def totalIssues = (highSeverity as Integer) + (mediumSeverity as Integer) + (lowSeverity as Integer)
                     
-                    echo "📁 Code scanné:"
-                    echo "   • Lignes de code analysées: ${totalLoc}"
-                    echo "   • Total vulnérabilités: ${totalIssues}"
                     echo ''
-                    echo '🔍 Vulnérabilités par SÉVÉRITÉ:'
-                    echo "   🔴 HIGH     : ${highSeverity}"
-                    echo "   🟠 MEDIUM   : ${mediumSeverity}"
-                    echo "   🟡 LOW      : ${lowSeverity}"
+                    echo '═══════════════════════════════════════════════════════'
+                    echo "📊 RÉSUMÉ: ${totalIssues} vulnérabilités | ${totalLoc} lignes analysées"
+                    echo "   🔴 HIGH: ${highSeverity}  🟠 MEDIUM: ${mediumSeverity}  🟡 LOW: ${lowSeverity}"
+                    echo '═══════════════════════════════════════════════════════'
                     echo ''
-                    
-                    if (totalIssues > 0) {
-                        echo "⚠️  TOTAL: ${totalIssues} vulnérabilités détectées"
-                        echo ''
-                        echo '📄 Consultez le rapport HTML pour tous les détails'
-                    } else {
-                        echo '✅ Aucune vulnérabilité détectée'
-                    }
-                    echo ''
-                    echo '═════════════════════════════════════════════════════'
                 } else {
                     echo '⚠️  Attention: bandit-report.json non trouvé'
                 }
@@ -174,25 +153,12 @@ pipeline {
     
     post {
         success {
-            echo ''
-            echo '╔═══════════════════════════════════════════════════════╗'
-            echo '║   ✅ PIPELINE TERMINÉ AVEC SUCCÈS                     ║'
-            echo '╚═══════════════════════════════════════════════════════╝'
-            echo ''
-            echo '📊 Rapports disponibles dans les artifacts Jenkins'
-            echo '📄 Consultez le rapport HTML pour les détails complets'
+            echo '✅ Pipeline terminé avec succès'
         }
         failure {
-            echo ''
-            echo '╔═══════════════════════════════════════════════════════╗'
-            echo '║   ❌ PIPELINE ÉCHOUÉ                                  ║'
-            echo '╚═══════════════════════════════════════════════════════╝'
-            echo ''
-            echo '🔍 Vérifiez les logs ci-dessus pour plus de détails'
+            echo '❌ Pipeline échoué'
         }
         always {
-            echo ''
-            echo '🏁 Pipeline SAST Bandit terminé'
             echo "⏱️  Durée: ${currentBuild.durationString.replace(' and counting', '')}"
         }
     }
