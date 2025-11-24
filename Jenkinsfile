@@ -64,26 +64,16 @@ pipeline {
                 sh "docker exec ${containerName} ls -la /app/"
                 sh "docker exec ${containerName} find /app -name '*.py' | head -5"
                 
-                // Scanner avec Bandit
+                // Scanner avec Bandit (seulement HTML et JSON)
                 echo '=== Scanning avec Bandit ==='
                 sh """
                     docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
-                        -f html -o /tmp/reports/bandit-report.html || true
+                        -f html -o /tmp/reports/bandit-report.html -q || true
                 """
                 
                 sh """
                     docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
-                        -f json -o /tmp/reports/bandit-report.json || true
-                """
-                
-                sh """
-                    docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
-                        -f txt -o /tmp/reports/bandit-report.txt || true
-                """
-                
-                sh """
-                    docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
-                        -f csv -o /tmp/reports/bandit-report.csv || true
+                        -f json -o /tmp/reports/bandit-report.json -q || true
                 """
                 
                 // Vérifier que les rapports sont créés dans le conteneur
