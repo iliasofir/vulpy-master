@@ -28,7 +28,7 @@ pipeline {
             }
         }
         
-        stage('🔍 SAST - Bandit') {
+                stage('🔍 SAST - Bandit') {
             steps {
                 echo '================================================'
                 echo '🔍 Analyse statique du code avec Bandit'
@@ -37,38 +37,32 @@ pipeline {
                     echo '→ Exécution de Bandit via Docker...'
 
                     sh """
-                        # Générer les rapports dans /tmp du conteneur puis copier
+                        # Créer le répertoire avec permissions ouvertes
+                        sudo mkdir -p ${WORKSPACE}/${REPORT_DIR}
+                        sudo chmod -R 777 ${WORKSPACE}/${REPORT_DIR}
+                        
+                        # Exécuter Docker
                         docker run --rm \
-                        -v "${WORKSPACE}:/workspace" \
-                        -w /workspace \
+                        -v "${WORKSPACE}:/src:rw" \
+                        -w /src \
+                        --user root \
                         python:3.11-slim \
                         bash -c '
                             pip install bandit -q && \
-                            mkdir -p /tmp/bandit-reports && \
-                            echo "Scanning with Bandit..." && \
-                            bandit -r bad good utils -f html -o /tmp/bandit-reports/bandit-report.html || true && \
-                            bandit -r bad good utils -f json -o /tmp/bandit-reports/bandit-report.json || true && \
-                            bandit -r bad good utils -f txt -o /tmp/bandit-reports/bandit-report.txt || true && \
-                            bandit -r bad good utils -f csv -o /tmp/bandit-reports/bandit-report.csv || true && \
-                            echo "Copying reports to workspace..." && \
-                            mkdir -p /workspace/${REPORT_DIR} && \
-                            cp -v /tmp/bandit-reports/* /workspace/${REPORT_DIR}/ && \
-                            chmod -R 777 /workspace/${REPORT_DIR} && \
-                            echo "Reports copied successfully"
+                            bandit -r bad good utils -f html -o ${REPORT_DIR}/bandit-report.html || true && \
+                            bandit -r bad good utils -f json -o ${REPORT_DIR}/bandit-report.json || true && \
+                            bandit -r bad good utils -f txt -o ${REPORT_DIR}/bandit-report.txt || true && \
+                            bandit -r bad good utils -f csv -o ${REPORT_DIR}/bandit-report.csv || true && \
+                            chmod -R 777 ${REPORT_DIR}
                         '
                         
-                        # Vérifier depuis Jenkins
-                        echo "Vérification finale:"
+                        # Forcer les permissions après Docker
+                        sudo chmod -R 755 ${WORKSPACE}/${REPORT_DIR}
+                        sudo chown -R jenkins:jenkins ${WORKSPACE}/${REPORT_DIR}
+                        
+                        echo "Fichiers créés:"
                         ls -lah ${WORKSPACE}/${REPORT_DIR}/
                     """
-                    
-                    if (fileExists("${REPORT_DIR}/bandit-report.html")) {
-                        echo '✓ Rapports générés et copiés avec succès'
-                    } else {
-                        echo '⚠️ Attention: Rapport HTML non trouvé'
-                    }
-                    
-                    echo '✓ Analyse SAST Bandit terminée'
                 }
             }
         }
