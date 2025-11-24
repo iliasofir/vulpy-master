@@ -14,12 +14,8 @@ pipeline {
                 echo '🔧 Préparation de l\'environnement'
                 echo '================================================'
                 script {
-                    // Créer le répertoire pour les rapports
                     sh "mkdir -p ${REPORT_DIR}"
-                    
-                    // Vérifier que Docker est disponible
                     sh 'docker --version || echo "Docker not found!"'
-                    
                     echo '✓ Environnement préparé'
                 }
             }
@@ -40,7 +36,7 @@ pipeline {
                 script {
                     echo '→ Exécution de Bandit via Docker...'
 
-                    // On stocke l'UID et GID dans des variables Groovy pour éviter l'erreur
+                    // Récupérer UID et GID pour éviter les erreurs Docker
                     def uid = sh(script: "id -u", returnStdout: true).trim()
                     def gid = sh(script: "id -g", returnStdout: true).trim()
 
@@ -54,9 +50,13 @@ pipeline {
                             mkdir -p "${REPORT_DIR}" && \
                             echo "Scanning with Bandit..." && \
                             bandit -r bad good utils \
-                                -f html -o security-reports/bandit-report.html || true
+                                -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
                             bandit -r bad good utils \
-                                -f json -o security-reports/bandit-report.json || true
+                                -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
+                            bandit -r bad good utils \
+                                -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
+                            bandit -r bad good utils \
+                                -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
                             echo "Files in ${REPORT_DIR}:" && ls -la "${REPORT_DIR}" && \
                             echo "Bandit reports generated"
                         '
@@ -71,14 +71,14 @@ pipeline {
                         echo '⚠️  Rapport HTML non trouvé'
                     }
                     
-                    // Afficher un résumé rapide
+                    // Résumé rapide
                     echo '→ Affichage du résumé Bandit:'
                     sh """
                         docker run --rm \
                           -v "${WORKSPACE}:/src" \
                           -w /src \
                           python:3.11-slim \
-                          bash -c 'pip install bandit -q && bandit -r . --severity-level medium || true'
+                          bash -c 'pip install bandit -q && bandit -r bad good utils --severity-level medium || true'
                     """
                     
                     echo '✓ Analyse SAST Bandit terminée'
@@ -86,7 +86,6 @@ pipeline {
             }
         }
 
-        
         stage('📊 Archiver les Rapports Bandit'){
             steps {
                 echo '================================================'
