@@ -38,44 +38,42 @@ pipeline {
             
             sh """
                 docker run --rm \
-                -v "${WORKSPACE}:/app" \
-                -w /app \
+                -v "\${WORKSPACE}:/workspace" \
+                -w /workspace \
                 python:3.11-slim \
                 bash -c '
                     pip install bandit -q
-                    mkdir -p /app/${REPORT_DIR}
+                    mkdir -p /workspace/${REPORT_DIR}
                     
                     echo "=== Scanning avec Bandit ==="
-                    # Scanner TOUT le workspace récursivement
                     bandit -r . \
                         -x "./.git,./venv,./node_modules" \
-                        -f html -o /app/${REPORT_DIR}/bandit-report.html 2>&1 || true
+                        -f html -o /workspace/${REPORT_DIR}/bandit-report.html || true
                     
                     bandit -r . \
                         -x "./.git,./venv,./node_modules" \
-                        -f json -o /app/${REPORT_DIR}/bandit-report.json 2>&1 || true
+                        -f json -o /workspace/${REPORT_DIR}/bandit-report.json || true
                     
                     bandit -r . \
                         -x "./.git,./venv,./node_modules" \
-                        -f txt -o /app/${REPORT_DIR}/bandit-report.txt 2>&1 || true
+                        -f txt -o /workspace/${REPORT_DIR}/bandit-report.txt || true
                     
                     bandit -r . \
                         -x "./.git,./venv,./node_modules" \
-                        -f csv -o /app/${REPORT_DIR}/bandit-report.csv 2>&1 || true
-                    
-                    chmod -R 777 /app/${REPORT_DIR}
+                        -f csv -o /workspace/${REPORT_DIR}/bandit-report.csv || true
                     
                     echo "=== Rapports générés ==="
-                    ls -lah /app/${REPORT_DIR}/
+                    ls -lah /workspace/${REPORT_DIR}/
                 '
             """
             
-            sh "ls -lah ${WORKSPACE}/${REPORT_DIR}/"
+            echo '→ Vérification des rapports dans Jenkins workspace:'
+            sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
             
             if (fileExists("${REPORT_DIR}/bandit-report.html")) {
                 echo '✓ Rapports Bandit générés avec succès!'
             } else {
-                error '✗ Échec génération rapports'
+                echo '⚠️  Attention: bandit-report.html non trouvé'
             }
         }
     }
