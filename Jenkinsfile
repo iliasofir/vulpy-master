@@ -32,27 +32,29 @@ pipeline {
                 echo '================================================'
                 script {
                     echo '→ Exécution de Bandit via Docker...'
-                    
-                    sh '''
-                        docker run --rm -u $(id -u):$(id -g) \
+
+                    // On stocke l'UID et GID dans des variables Groovy pour éviter l'erreur
+                    def uid = sh(script: "id -u", returnStdout: true).trim()
+                    def gid = sh(script: "id -g", returnStdout: true).trim()
+
+                    sh """
+                        docker run --rm -u ${uid}:${gid} \
                         -v "${WORKSPACE}:/src" \
                         -w /src \
                         python:3.11-slim \
-                        bash -c "
+                        bash -c '
                             pip install bandit -q && \
-                            mkdir -p '${REPORT_DIR}' && \
-                            echo 'Scanning with Bandit...' && \
-                            bandit -r . -f json -o '${REPORT_DIR}/bandit-report.json' || true && \
-                            bandit -r . -f html -o '${REPORT_DIR}/bandit-report.html' || true && \
-                            bandit -r . -f txt -o '${REPORT_DIR}/bandit-report.txt' || true && \
-                            bandit -r . -f csv -o '${REPORT_DIR}/bandit-report.csv' || true && \
-                            ls -la '${REPORT_DIR}/' && \
-                            echo 'Bandit reports generated'
-                        "
-                    '''
+                            mkdir -p "${REPORT_DIR}" && \
+                            echo "Scanning with Bandit..." && \
+                            bandit -r . -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
+                            bandit -r . -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
+                            bandit -r . -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
+                            bandit -r . -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
+                            echo "Files in ${REPORT_DIR}:" && ls -la "${REPORT_DIR}" && \
+                            echo "Bandit reports generated"
+                        '
+                    """
 
-
-                    
                     // Vérifier que les rapports ont été générés
                     sh "ls -la ${REPORT_DIR}/ || echo 'Report directory empty'"
                     
@@ -62,14 +64,14 @@ pipeline {
                         echo '⚠️  Rapport HTML non trouvé'
                     }
                     
-                    // Afficher un résumé
+                    // Afficher un résumé rapide
                     echo '→ Affichage du résumé Bandit:'
                     sh """
                         docker run --rm \
-                          -v "\${WORKSPACE}:/src" \
+                          -v "${WORKSPACE}:/src" \
                           -w /src \
                           python:3.11-slim \
-                          bash -c "pip install bandit -q && bandit -r bad/ good/ utils/ --severity-level medium || true"
+                          bash -c 'pip install bandit -q && bandit -r . --severity-level medium || true'
                     """
                     
                     echo '✓ Analyse SAST Bandit terminée'
@@ -85,8 +87,8 @@ pipeline {
                 echo '================================================'
                 script {
                     archiveArtifacts artifacts: "${REPORT_DIR}/bandit-*", 
-                                   allowEmptyArchive: true,
-                                   fingerprint: true
+                                     allowEmptyArchive: true,
+                                     fingerprint: true
                     
                     publishHTML([
                         allowMissing: true,
