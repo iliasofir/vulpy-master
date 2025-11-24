@@ -39,15 +39,19 @@ pipeline {
             // Créer un conteneur nommé
             def containerName = "bandit-scan-${BUILD_NUMBER}"
             
+            // Copier les fichiers dans le conteneur au lieu d'utiliser volume mount
             try {
                 // Créer et démarrer le conteneur
                 sh """
                     docker run -d --name ${containerName} \
-                    -v "\${WORKSPACE}:/src:ro" \
-                    -w /tmp \
+                    -w /app \
                     python:3.11-slim \
                     tail -f /dev/null
                 """
+                
+                // Copier le code source dans le conteneur
+                echo '→ Copie du code source dans le conteneur...'
+                sh "docker cp \${WORKSPACE}/. ${containerName}:/app/"
                 
                 // Installer Bandit
                 sh "docker exec ${containerName} pip install bandit -q"
@@ -55,34 +59,30 @@ pipeline {
                 // Créer dossier pour les rapports dans le conteneur
                 sh "docker exec ${containerName} mkdir -p /tmp/reports"
                 
-                // Vérifier la structure des dossiers montés
-                echo '=== Vérification de la structure ==='
-                sh "docker exec ${containerName} ls -la /src/"
-                sh "docker exec ${containerName} find /src -type d -maxdepth 2"
+                // Vérifier que les fichiers sont copiés
+                echo '=== Vérification des fichiers ==='
+                sh "docker exec ${containerName} ls -la /app/"
+                sh "docker exec ${containerName} find /app -name '*.py' | head -5"
                 
-                // Scanner avec Bandit (scanner TOUT /src sauf exclusions)
+                // Scanner avec Bandit
                 echo '=== Scanning avec Bandit ==='
                 sh """
-                    docker exec ${containerName} bandit -r /src \
-                        -x /src/.git \
+                    docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
                         -f html -o /tmp/reports/bandit-report.html || true
                 """
                 
                 sh """
-                    docker exec ${containerName} bandit -r /src \
-                        -x /src/.git \
+                    docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
                         -f json -o /tmp/reports/bandit-report.json || true
                 """
                 
                 sh """
-                    docker exec ${containerName} bandit -r /src \
-                        -x /src/.git \
+                    docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
                         -f txt -o /tmp/reports/bandit-report.txt || true
                 """
                 
                 sh """
-                    docker exec ${containerName} bandit -r /src \
-                        -x /src/.git \
+                    docker exec ${containerName} bandit -r /app/bad /app/good /app/utils \
                         -f csv -o /tmp/reports/bandit-report.csv || true
                 """
                 
