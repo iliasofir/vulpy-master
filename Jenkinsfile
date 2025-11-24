@@ -36,39 +36,64 @@ pipeline {
         script {
             echo '→ Exécution de Bandit via Docker...'
             
-            sh """
-                docker run --rm \
-                -v "\${WORKSPACE}:/workspace" \
-                -w /workspace \
-                python:3.11-slim \
-                bash -c '
-                    pip install bandit -q
-                    mkdir -p /workspace/${REPORT_DIR}
-                    
-                    echo "=== Scanning avec Bandit ==="
-                    bandit -r . \
-                        -x "./.git,./venv,./node_modules" \
+            // Créer un conteneur temporaire avec nom
+            def containerId = sh(
+                script: """
+                    docker run -d \
+                    -v "\${WORKSPACE}:/workspace:rw" \
+                    -w /workspace \
+                    python:3.11-slim \
+                    tail -f /dev/null
+                """,
+                returnStdout: true
+            ).trim()
+            
+            echo "Container ID: ${containerId}"
+            
+            try {
+                // Installer Bandit dans le conteneur
+                sh "docker exec ${containerId} pip install bandit -q"
+                
+                // Créer le dossier reports
+                sh "docker exec ${containerId} mkdir -p /workspace/${REPORT_DIR}"
+                
+                // Scanner avec Bandit
+                echo '=== Scanning avec Bandit ==='
+                sh """
+                    docker exec ${containerId} bandit -r /workspace \
+                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
                         -f html -o /workspace/${REPORT_DIR}/bandit-report.html || true
-                    
-                    bandit -r . \
-                        -x "./.git,./venv,./node_modules" \
+                """
+                
+                sh """
+                    docker exec ${containerId} bandit -r /workspace \
+                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
                         -f json -o /workspace/${REPORT_DIR}/bandit-report.json || true
-                    
-                    bandit -r . \
-                        -x "./.git,./venv,./node_modules" \
+                """
+                
+                sh """
+                    docker exec ${containerId} bandit -r /workspace \
+                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
                         -f txt -o /workspace/${REPORT_DIR}/bandit-report.txt || true
-                    
-                    bandit -r . \
-                        -x "./.git,./venv,./node_modules" \
+                """
+                
+                sh """
+                    docker exec ${containerId} bandit -r /workspace \
+                        -x '/workspace/.git,/workspace/venv,/workspace/node_modules' \
                         -f csv -o /workspace/${REPORT_DIR}/bandit-report.csv || true
-                    
-                    echo "=== Rapports générés ==="
-                    ls -lah /workspace/${REPORT_DIR}/
-                '
-            """
+                """
+                
+                // Vérifier les rapports dans le conteneur
+                sh "docker exec ${containerId} ls -lah /workspace/${REPORT_DIR}/"
+                
+            } finally {
+                // Arrêter et supprimer le conteneur
+                sh "docker stop ${containerId} || true"
+                sh "docker rm ${containerId} || true"
+            }
             
             echo '→ Vérification des rapports dans Jenkins workspace:'
-            sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/"
+            sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/ || echo 'Dossier vide'"
             
             if (fileExists("${REPORT_DIR}/bandit-report.html")) {
                 echo '✓ Rapports Bandit générés avec succès!'
