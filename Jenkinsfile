@@ -76,7 +76,7 @@ pipeline {
         }
 
         
-        stage('📊 Archiver les Rapports Bandit') {
+        stage('📊 Archiver les Rapports Bandit'){
             steps {
                 echo '================================================'
                 echo '📊 Archivage des rapports Bandit'
