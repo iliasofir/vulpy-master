@@ -32,22 +32,20 @@ pipeline {
             }
         }
         
-        stage('🔧 Préparation Environnement') {
-            steps {
-                echo '================================================'
-                echo '🔧 Préparation de l\'environnement'
-                echo '================================================'
-                script {
-                    // Créer le répertoire pour les rapports
-                    sh "mkdir -p ${REPORT_DIR}"
-                    
-                    // Vérifier que Docker est disponible
-                    sh 'docker --version || echo "Docker not found!"'
-                    
-                    echo '✓ Environnement préparé'
-                }
-            }
-        }
+        stage('Setup Python Env') {
+    steps {
+        sh '''
+        docker run --rm \
+            -v $(pwd):/src \
+            -w /src \
+            python:3.9-slim \
+            bash -c "
+                pip install --upgrade pip &&
+                pip install -r requirements.txt
+            "
+        '''
+    }
+}
         
         stage('🔍 SAST - Bandit') {
             steps {
