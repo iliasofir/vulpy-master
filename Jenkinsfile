@@ -47,11 +47,18 @@ pipeline {
                         python:3.11-slim \
                         bash -c '
                             pip install bandit -q && \
-                            mkdir -p /tmp/reports && \
-                            bandit -r bad good utils -f html -o /tmp/reports/bandit-report.html || true && \
-                            bandit -r bad good utils -f json -o /tmp/reports/bandit-report.json || true && \
-                            cp -r /tmp/reports/* "${REPORT_DIR}/" && \
-                            chmod -R 777 "${REPORT_DIR}"
+                            mkdir -p "${REPORT_DIR}" && \
+                            echo "Scanning with Bandit..." && \
+                            bandit -r bad good utils \
+                                -f html -o "${REPORT_DIR}/bandit-report.html" || true && \
+                            bandit -r bad good utils \
+                                -f json -o "${REPORT_DIR}/bandit-report.json" || true && \
+                            bandit -r bad good utils \
+                                -f txt -o "${REPORT_DIR}/bandit-report.txt" || true && \
+                            bandit -r bad good utils \
+                                -f csv -o "${REPORT_DIR}/bandit-report.csv" || true && \
+                            echo "Files in ${REPORT_DIR}:" && ls -la "${REPORT_DIR}" && \
+                            echo "Bandit reports generated"
                         '
                     """
 
@@ -80,30 +87,32 @@ pipeline {
         }
 
         stage('📊 Archiver les Rapports Bandit'){
-            steps {
-                echo '================================================'
-                echo '📊 Archivage des rapports Bandit'
-                echo '================================================'
-                script {
-                    archiveArtifacts artifacts: "${REPORT_DIR}/bandit-*", 
-                                     allowEmptyArchive: true,
-                                     fingerprint: true
-                    
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: "${REPORT_DIR}",
-                        reportFiles: 'bandit-report.html',
-                        reportName: 'Bandit SAST Report',
-                        reportTitles: 'Bandit Security Analysis'
-                    ])
-                    
-                    echo '✓ Rapports Bandit archivés avec succès'
-                }
-            }
+    steps {
+        echo '================================================'
+        echo '📊 Archivage des rapports Bandit'
+        echo '================================================'
+        script {
+            // Utiliser le chemin complet
+            def reportPath = "${WORKSPACE}/${REPORT_DIR}"
+            
+            // Vérifier l'existence des fichiers
+            sh "ls -la ${reportPath}/ || echo 'Aucun fichier trouvé'"
+            
+            archiveArtifacts artifacts: "${REPORT_DIR}/bandit-*", 
+                             allowEmptyArchive: false,  // Changer à false pour détecter les erreurs
+                             fingerprint: true
+            
+            publishHTML([
+                allowMissing: false,  // Changer à false
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: "${REPORT_DIR}",
+                reportFiles: 'bandit-report.html',
+                reportName: 'Bandit SAST Report'
+            ])
         }
     }
+}
     
     post {
         success {
