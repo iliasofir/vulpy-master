@@ -158,6 +158,7 @@ pipeline {
                 } else {
                     echo '⚠️  Attention: bandit-report.json non trouvé'
                 }
+                }
             }
         }
         
