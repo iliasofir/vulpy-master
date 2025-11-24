@@ -106,8 +106,7 @@ pipeline {
         success {
             echo '###############################################'
             echo '#                                             #'
-            echo '#   ✓ Scan SAST Bandit terminé avec succès!  #'
-            echo '#                                             #'
+            echo '#   ✓ Scan SAST Bandit terminé avec succès!   #'
             echo '###############################################'
             echo ''
             echo "Rapports Bandit disponibles dans: ${REPORT_DIR}/"
