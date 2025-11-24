@@ -34,7 +34,7 @@ pipeline {
                     echo '→ Exécution de Bandit via Docker...'
                     
                     sh """
-                        docker run --rm -u $(id -u):$(id -g) \
+                        docker run --rm -u ${(id -u)}:${(id -g)} \
                         -v "\${WORKSPACE}:/src" \
                         -w /src \
                         python:3.11-slim \
@@ -49,7 +49,7 @@ pipeline {
                             ls -la ${REPORT_DIR}/ && \
                             echo 'Bandit reports generated'
                         "
-"""
+                    """
 
                     
                     // Vérifier que les rapports ont été générés
