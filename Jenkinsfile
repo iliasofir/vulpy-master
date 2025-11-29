@@ -122,85 +122,106 @@ pipeline {
                 echo '🔒 Analyse complète SCA avec Trivy'
                 echo '================================================'
                 script {
-                    echo '→ Préparation environnement Trivy...'
+                    echo '→ Préparation conteneur Trivy...'
                     
-                    // Créer volume Docker nommé pour cache Trivy (persistant entre builds)
-                    sh "docker volume create ${TRIVY_CACHE_DIR} || true"
+                    def trivyContainer = "trivy-scan-${BUILD_NUMBER}"
                     
-                    echo '=== Vérification des fichiers ==='
-                    sh "ls -la \${WORKSPACE}/"
-                    sh "test -f \${WORKSPACE}/requirements.txt && echo '✓ requirements.txt trouvé' || echo '✗ requirements.txt manquant'"
-                    
-                    // 1) Scan requirements.txt (dépendances directes)
-                    echo '→ 1/5 Scan requirements.txt...'
-                    sh """
-                        docker run --rm \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/workspace \
-                        aquasec/trivy:0.53.0 fs /workspace/requirements.txt \
-                        --scanners vuln \
-                        --format json \
-                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-requirements.json || true
-                    """
-                    
-                    // 2) Scanner toutes les dépendances Python (directes + transitives)
-                    echo '→ 2/5 Scan dépendances Python (directes + transitives)...'
-                    sh """
-                        docker run --rm \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/workspace \
-                        aquasec/trivy:0.53.0 fs /workspace \
-                        --scanners vuln \
-                        --format json \
-                        --severity HIGH,CRITICAL \
-                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-dependencies.json || true
-                    """
-                    
-                    // 3) Scanner fichiers projet (secrets, misconfig)
-                    echo '→ 3/5 Scan fichiers projet (secrets, misconfig)...'
-                    sh """
-                        docker run --rm \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/workspace \
-                        aquasec/trivy:0.53.0 fs /workspace \
-                        --scanners misconfig,secret \
-                        --format json \
-                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-files.json || true
-                    """
-                    
-                    // 4) Analyse Supply Chain (SBOM)
-                    echo '→ 4/5 Génération SBOM Supply Chain...'
-                    sh """
-                        docker run --rm \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/workspace \
-                        aquasec/trivy:0.53.0 fs /workspace \
-                        --format cyclonedx \
-                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-sbom.json || true
-                    """
-                    
-                    // 5) Rapport HTML consolidé
-                    echo '→ 5/5 Génération rapport HTML complet...'
-                    sh """
-                        docker run --rm \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/workspace \
-                        aquasec/trivy:0.53.0 fs /workspace \
-                        --format template \
-                        --template '@contrib/html.tpl' \
-                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-report.html || true
-                    """
+                    try {
+                        // Créer volume pour cache
+                        sh "docker volume create ${TRIVY_CACHE_DIR} || true"
+                        
+                        // Créer conteneur Trivy persistent
+                        sh """
+                            docker run -d --name ${trivyContainer} \
+                            -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                            -w /workspace \
+                            aquasec/trivy:0.53.0 \
+                            sh -c 'while true; do sleep 3600; done'
+                        """
+                        
+                        // Copier code source
+                        echo '→ Copie du code source dans le conteneur...'
+                        sh "docker cp \${WORKSPACE}/. ${trivyContainer}:/workspace/"
+                        
+                        // Créer dossier rapports
+                        sh "docker exec ${trivyContainer} mkdir -p /tmp/trivy-reports"
+                        
+                        echo '=== Vérification des fichiers ==='
+                        sh "docker exec ${trivyContainer} ls -la /workspace/"
+                        sh "docker exec ${trivyContainer} test -f /workspace/requirements.txt && echo '✓ requirements.txt trouvé' || echo '✗ requirements.txt manquant'"
+                        
+                        // 1) Scan requirements.txt
+                        echo '→ 1/5 Scan requirements.txt...'
+                        sh """
+                            docker exec ${trivyContainer} trivy fs /workspace/requirements.txt \
+                            --scanners vuln \
+                            --format json \
+                            --quiet \
+                            -o /tmp/trivy-reports/trivy-requirements.json || true
+                        """
+                        
+                        // 2) Scan dépendances (directes + transitives)
+                        echo '→ 2/5 Scan dépendances Python (directes + transitives)...'
+                        sh """
+                            docker exec ${trivyContainer} trivy fs /workspace \
+                            --scanners vuln \
+                            --format json \
+                            --severity HIGH,CRITICAL \
+                            --quiet \
+                            -o /tmp/trivy-reports/trivy-dependencies.json || true
+                        """
+                        
+                        // 3) Scan fichiers projet (secrets, misconfig)
+                        echo '→ 3/5 Scan fichiers projet (secrets, misconfig)...'
+                        sh """
+                            docker exec ${trivyContainer} trivy fs /workspace \
+                            --scanners misconfig,secret \
+                            --format json \
+                            --quiet \
+                            -o /tmp/trivy-reports/trivy-files.json || true
+                        """
+                        
+                        // 4) SBOM Supply Chain
+                        echo '→ 4/5 Génération SBOM Supply Chain...'
+                        sh """
+                            docker exec ${trivyContainer} trivy fs /workspace \
+                            --format cyclonedx \
+                            --quiet \
+                            -o /tmp/trivy-reports/trivy-sbom.json || true
+                        """
+                        
+                        // 5) Rapport HTML
+                        echo '→ 5/5 Génération rapport HTML complet...'
+                        sh """
+                            docker exec ${trivyContainer} trivy fs /workspace \
+                            --format template \
+                            --template '@contrib/html.tpl' \
+                            --quiet \
+                            -o /tmp/trivy-reports/trivy-report.html || true
+                        """
+                        
+                        // Vérifier rapports dans conteneur
+                        sh "docker exec ${trivyContainer} ls -lah /tmp/trivy-reports/"
+                        
+                        // Copier rapports vers Jenkins
+                        echo '→ Copie des rapports vers Jenkins workspace...'
+                        sh "docker cp ${trivyContainer}:/tmp/trivy-reports/. \${WORKSPACE}/${REPORT_DIR}/"
+                        
+                    } finally {
+                        // Nettoyer conteneur
+                        sh "docker stop ${trivyContainer} || true"
+                        sh "docker rm ${trivyContainer} || true"
+                    }
                     
                     // Vérifier rapports dans Jenkins
                     echo '→ Vérification des rapports Trivy:'
                     sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/trivy* || echo 'Aucun rapport Trivy trouvé'"
                     
-                    // Analyser résultats (parser grep correctement)
+                    // Analyser résultats
                     if (fileExists("${REPORT_DIR}/trivy-dependencies.json")) {
                         def criticalRaw = sh(script: "grep -c '\"Severity\":\"CRITICAL\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim()
                         def highRaw = sh(script: "grep -c '\"Severity\":\"HIGH\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim()
                         
-                        // Extraire seulement le premier nombre (au cas où grep retourne plusieurs lignes)
                         def criticalCount = criticalRaw.split('\n')[0].trim() as Integer
                         def highCount = highRaw.split('\n')[0].trim() as Integer
                         
