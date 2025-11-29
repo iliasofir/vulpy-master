@@ -129,10 +129,12 @@ pipeline {
                         docker run --rm \
                         -v /var/run/docker.sock:/var/run/docker.sock \
                         -v "${WORKSPACE}:/src" \
-                        aquasec/trivy:latest fs /src \
+                        -v "/tmp/trivycache:/root/.cache/" \
+                        aquasec/trivy:0.53.0 fs /src \
                         --format json \
                         --output ${REPORT_DIR}/trivy-fs.json || true
                     """
+
 
                     // 2) SBOM CycloneDX complet
                     sh """
