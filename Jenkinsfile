@@ -140,8 +140,7 @@ pipeline {
                         aquasec/trivy:0.53.0 fs /scan/requirements.txt \
                         --scanners vuln \
                         --format json \
-                        --quiet \
-                        -o /scan/${REPORT_DIR}/trivy-requirements.json || true
+                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-requirements.json || true
                     """
                     
                     // 2) Scanner toutes les dépendances Python (directes + transitives)
@@ -154,8 +153,7 @@ pipeline {
                         --scanners vuln \
                         --format json \
                         --severity HIGH,CRITICAL \
-                        --quiet \
-                        -o /scan/${REPORT_DIR}/trivy-dependencies.json || true
+                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-dependencies.json || true
                     """
                     
                     // 3) Scanner fichiers projet (secrets, misconfig)
@@ -167,8 +165,7 @@ pipeline {
                         aquasec/trivy:0.53.0 fs /scan \
                         --scanners misconfig,secret \
                         --format json \
-                        --quiet \
-                        -o /scan/${REPORT_DIR}/trivy-files.json || true
+                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-files.json || true
                     """
                     
                     // 4) Analyse Supply Chain (SBOM)
@@ -179,8 +176,7 @@ pipeline {
                         -v \${WORKSPACE}:/scan \
                         aquasec/trivy:0.53.0 fs /scan \
                         --format cyclonedx \
-                        --quiet \
-                        -o /scan/${REPORT_DIR}/trivy-sbom.json || true
+                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-sbom.json || true
                     """
                     
                     // 5) Rapport HTML consolidé
@@ -192,8 +188,7 @@ pipeline {
                         aquasec/trivy:0.53.0 fs /scan \
                         --format template \
                         --template '@contrib/html.tpl' \
-                        --quiet \
-                        -o /scan/${REPORT_DIR}/trivy-report.html || true
+                        --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-report.html || true
                     """
                     
                     // Vérifier rapports dans Jenkins
