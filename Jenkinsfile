@@ -122,43 +122,67 @@ pipeline {
                 echo '🔒 Analyse Supply-chain avec Trivy'
                 echo '================================================'
                 script {
-                    echo '→ Scan filesystem avec Trivy...'
+                    echo '→ Exécution de Trivy via Docker...'
                     
-                    // 1) Scan JSON pour analyse
-                    sh """
-                        docker run --rm \
-                        -v /var/run/docker.sock:/var/run/docker.sock \
-                        -v "${WORKSPACE}:/src" \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache/ \
-                        aquasec/trivy:0.53.0 fs /src \
-                        --format json \
-                        --output /src/${REPORT_DIR}/trivy-fs.json \
-                        --severity HIGH,CRITICAL \
-                        --quiet || true
-                    """
+                    def containerName = "trivy-scan-${BUILD_NUMBER}"
                     
-                    // 2) Scan HTML pour visualisation
-                    sh """
-                        docker run --rm \
-                        -v "${WORKSPACE}:/src" \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache/ \
-                        aquasec/trivy:0.53.0 fs /src \
-                        --format template \
-                        --template '@contrib/html.tpl' \
-                        --output /src/${REPORT_DIR}/trivy-report.html \
-                        --quiet || true
-                    """
-                    
-                    // 3) SBOM CycloneDX
-                    sh """
-                        docker run --rm \
-                        -v "${WORKSPACE}:/src" \
-                        -v ${TRIVY_CACHE_DIR}:/root/.cache/ \
-                        aquasec/trivy:0.53.0 fs /src \
-                        --format cyclonedx \
-                        --output /src/${REPORT_DIR}/trivy-sbom.json \
-                        --quiet || true
-                    """
+                    try {
+                        // Créer et démarrer le conteneur Trivy
+                        sh """
+                            docker run -d --name ${containerName} \
+                            -w /app \
+                            aquasec/trivy:0.53.0 \
+                            tail -f /dev/null
+                        """
+                        
+                        // Copier le code source dans le conteneur
+                        echo '→ Copie du code source dans le conteneur...'
+                        sh "docker cp \${WORKSPACE}/. ${containerName}:/app/"
+                        
+                        // Créer dossier pour les rapports dans le conteneur
+                        sh "docker exec ${containerName} mkdir -p /tmp/reports"
+                        
+                        // Scanner avec Trivy
+                        echo '=== Scanning avec Trivy ==='
+                        
+                        // 1) Scan JSON pour analyse
+                        sh """
+                            docker exec ${containerName} trivy fs /app \
+                            --format json \
+                            --output /tmp/reports/trivy-fs.json \
+                            --severity HIGH,CRITICAL \
+                            --quiet || true
+                        """
+                        
+                        // 2) Scan HTML pour visualisation
+                        sh """
+                            docker exec ${containerName} trivy fs /app \
+                            --format template \
+                            --template '@contrib/html.tpl' \
+                            --output /tmp/reports/trivy-report.html \
+                            --quiet || true
+                        """
+                        
+                        // 3) SBOM CycloneDX
+                        sh """
+                            docker exec ${containerName} trivy fs /app \
+                            --format cyclonedx \
+                            --output /tmp/reports/trivy-sbom.json \
+                            --quiet || true
+                        """
+                        
+                        // Vérifier que les rapports sont créés dans le conteneur
+                        sh "docker exec ${containerName} ls -lah /tmp/reports/"
+                        
+                        // COPIER les rapports depuis le conteneur vers Jenkins
+                        echo '→ Copie des rapports depuis le conteneur...'
+                        sh "docker cp ${containerName}:/tmp/reports/. \${WORKSPACE}/${REPORT_DIR}/"
+                        
+                    } finally {
+                        // Nettoyer le conteneur
+                        sh "docker stop ${containerName} || true"
+                        sh "docker rm ${containerName} || true"
+                    }
                     
                     echo '→ Vérification des rapports Trivy:'
                     sh "ls -lah ${WORKSPACE}/${REPORT_DIR}/trivy*"
