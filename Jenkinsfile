@@ -4,7 +4,7 @@ pipeline {
     environment {
         PROJECT_NAME = 'vulpy'
         REPORT_DIR = 'security-reports'
-        TRIVY_CACHE_DIR = "/tmp/trivycache"
+        TRIVY_CACHE_DIR = "trivy-cache"
     }
     
     stages {
@@ -127,13 +127,16 @@ pipeline {
                     def trivyContainer = "trivy-scan-${BUILD_NUMBER}"
                     
                     try {
+                        // Créer volume Docker nommé pour cache Trivy (persistant)
+                        sh "docker volume create ${TRIVY_CACHE_DIR} || true"
+                        
                         // Créer conteneur Trivy avec cache persistant
                         sh """
                             docker run -d --name ${trivyContainer} \
                             -v ${TRIVY_CACHE_DIR}:/root/.cache \
                             -w /app \
                             aquasec/trivy:0.53.0 \
-                            tail -f /dev/null
+                            sleep infinity
                         """
                         
                         // Copier le code source dans le conteneur
