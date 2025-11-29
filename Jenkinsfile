@@ -4,6 +4,7 @@ pipeline {
     environment {
         PROJECT_NAME = 'vulpy'
         REPORT_DIR = 'security-reports'
+        TRIVY_CACHE_DIR = "/tmp/trivycache"
     }
     
     stages {
@@ -118,83 +119,118 @@ pipeline {
         stage('🔒 SCA - Trivy') {
             steps {
                 echo '================================================'
-                echo '🔒 Analyse Supply-chain Python & deps'
+                echo '🔒 Analyse Supply-chain avec Trivy'
                 echo '================================================'
                 script {
-
-                    def trivyReportDir = "${WORKSPACE}/${REPORT_DIR}"
-
-                    // 1) scan des fichiers du projet + requirements
+                    echo '→ Scan filesystem avec Trivy...'
+                    
+                    // 1) Scan JSON pour analyse
                     sh """
                         docker run --rm \
                         -v /var/run/docker.sock:/var/run/docker.sock \
                         -v "${WORKSPACE}:/src" \
-                        -v "/tmp/trivycache:/root/.cache/" \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache/ \
                         aquasec/trivy:0.53.0 fs /src \
                         --format json \
-                        --output ${REPORT_DIR}/trivy-fs.json || true
+                        --output /src/${REPORT_DIR}/trivy-fs.json \
+                        --severity HIGH,CRITICAL \
+                        --quiet || true
                     """
-
-
-                    // 2) SBOM CycloneDX complet
+                    
+                    // 2) Scan HTML pour visualisation
                     sh """
                         docker run --rm \
                         -v "${WORKSPACE}:/src" \
-                        aquasec/trivy:latest fs /src \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache/ \
+                        aquasec/trivy:0.53.0 fs /src \
+                        --format template \
+                        --template '@contrib/html.tpl' \
+                        --output /src/${REPORT_DIR}/trivy-report.html \
+                        --quiet || true
+                    """
+                    
+                    // 3) SBOM CycloneDX
+                    sh """
+                        docker run --rm \
+                        -v "${WORKSPACE}:/src" \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache/ \
+                        aquasec/trivy:0.53.0 fs /src \
                         --format cyclonedx \
-                        --output ${REPORT_DIR}/trivy-sbom.json || true
+                        --output /src/${REPORT_DIR}/trivy-sbom.json \
+                        --quiet || true
                     """
-
-                    // 3) scan des dépendances Python installées (transitives)
-                    sh """
-                        docker run --rm \
-                        -v "${WORKSPACE}:/src" \
-                        -w /src \
-                        python:3.11-slim bash -c "
-                            pip install -r requirements.txt -q &&
-                            pip freeze > deps.txt &&
-                            trivy fs . --format json --output ${REPORT_DIR}/trivy-deps.json || true
-                        "
-                    """
-
-                    sh "ls -lah ${WORKSPACE}/${REPORT_DIR}/"
+                    
+                    echo '→ Vérification des rapports Trivy:'
+                    sh "ls -lah ${WORKSPACE}/${REPORT_DIR}/trivy*"
+                    
+                    // Analyser les résultats
+                    if (fileExists("${REPORT_DIR}/trivy-fs.json")) {
+                        def criticalCount = sh(script: "grep -c '\"Severity\":\"CRITICAL\"' ${REPORT_DIR}/trivy-fs.json || echo 0", returnStdout: true).trim()
+                        def highCount = sh(script: "grep -c '\"Severity\":\"HIGH\"' ${REPORT_DIR}/trivy-fs.json || echo 0", returnStdout: true).trim()
+                        
+                        def totalCritical = criticalCount as Integer
+                        def totalHigh = highCount as Integer
+                        def totalVuln = totalCritical + totalHigh
+                        
+                        echo ''
+                        echo '═══════════════════════════════════════════════════════'
+                        echo "🔒 TRIVY: ${totalVuln} vulnérabilités HIGH/CRITICAL"
+                        echo "   💀 CRITICAL: ${totalCritical}  🔴 HIGH: ${totalHigh}"
+                        echo '═══════════════════════════════════════════════════════'
+                        echo ''
+                        
+                        // Fail si vulnérabilités CRITICAL
+                        if (totalCritical > 0) {
+                            echo "⚠️  ATTENTION: ${totalCritical} vulnérabilités CRITICAL détectées!"
+                            echo '📄 Consultez le rapport HTML Trivy pour corriger'
+                            // Décommenter pour faire échouer le build:
+                            // error("Build arrêté: ${totalCritical} CVE CRITICAL trouvées")
+                        }
+                    } else {
+                        echo '⚠️  Attention: trivy-fs.json non trouvé'
+                    }
                 }
             }
         }
 
 
         
-        stage('📊 Archiver les Rapports Bandit') {
+        stage('📊 Archiver les Rapports') {
             steps {
                 echo '================================================'
-                echo '📊 Archivage des rapports Bandit'
+                echo '📊 Archivage et publication des rapports'
                 echo '================================================'
                 script {
                     sh "ls -la ${WORKSPACE}/${REPORT_DIR}/"
                     
+                    // Archiver tous les rapports
                     archiveArtifacts artifacts: "${REPORT_DIR}/*", 
                                      allowEmptyArchive: true,
                                      fingerprint: true
                     
+                    // Publier rapport Bandit HTML
                     publishHTML([
                         allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: "${REPORT_DIR}",
                         reportFiles: 'bandit-report.html',
-                        reportName: 'Bandit SAST Report'
+                        reportName: '📊 Bandit SAST Report'
                     ])
-
+                    
+                    // Publier rapport Trivy HTML
                     publishHTML([
                         allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: "${REPORT_DIR}",
-                        reportFiles: 'trivy-report.json',
-                        reportName: 'Trivy Scan Report'
+                        reportFiles: 'trivy-report.html',
+                        reportName: '🔒 Trivy SCA Report'
                     ])
                     
-                    echo '✓ Archivage terminé'
+                    echo '✓ Rapports publiés avec succès'
+                    echo '  → Bandit SAST (SAST)'
+                    echo '  → Trivy SCA (Supply Chain)'
                 }
             }
         }
