@@ -162,7 +162,6 @@ pipeline {
                             docker exec ${trivyContainer} trivy fs /workspace/requirements.txt \
                             --scanners vuln \
                             --format json \
-                            --quiet \
                             -o /tmp/trivy-reports/trivy-requirements.json || true
                         """
                         
@@ -173,7 +172,6 @@ pipeline {
                             --scanners vuln \
                             --format json \
                             --severity HIGH,CRITICAL \
-                            --quiet \
                             -o /tmp/trivy-reports/trivy-dependencies.json || true
                         """
                         
@@ -183,7 +181,6 @@ pipeline {
                             docker exec ${trivyContainer} trivy fs /workspace \
                             --scanners misconfig,secret \
                             --format json \
-                            --quiet \
                             -o /tmp/trivy-reports/trivy-files.json || true
                         """
                         
@@ -192,7 +189,6 @@ pipeline {
                         sh """
                             docker exec ${trivyContainer} trivy fs /workspace \
                             --format cyclonedx \
-                            --quiet \
                             -o /tmp/trivy-reports/trivy-sbom.json || true
                         """
                         
@@ -202,7 +198,6 @@ pipeline {
                             docker exec ${trivyContainer} trivy fs /workspace \
                             --format template \
                             --template '@contrib/html.tpl' \
-                            --quiet \
                             -o /tmp/trivy-reports/trivy-report.html || true
                         """
                         
