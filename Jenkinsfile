@@ -127,100 +127,87 @@ pipeline {
                     // Créer volume Docker nommé pour cache Trivy (persistant entre builds)
                     sh "docker volume create ${TRIVY_CACHE_DIR} || true"
                     
-                    // Utiliser workspace Jenkins (accessible par Docker via socket)
-                    def scanDir = "${WORKSPACE}/trivy-scan"
-                    sh "mkdir -p ${scanDir}/reports"
-                    
                     echo '=== Vérification des fichiers ==='
                     sh "ls -la \${WORKSPACE}/"
                     sh "test -f \${WORKSPACE}/requirements.txt && echo '✓ requirements.txt trouvé' || echo '✗ requirements.txt manquant'"
                     
-                    try {
-                        // 1) Scan requirements.txt (dépendances directes)
-                        echo '→ 1/5 Scan requirements.txt...'
-                        sh """
-                            docker run --rm \
-                            -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                            -v \${WORKSPACE}:/scan \
-                            aquasec/trivy:0.53.0 fs /scan/requirements.txt \
-                            --scanners vuln \
-                            --format json \
-                            --quiet \
-                            -o /scan/trivy-scan/reports/trivy-requirements.json || true
-                        """
-                        
-                        // 2) Scanner toutes les dépendances Python (directes + transitives)
-                        echo '→ 2/5 Scan dépendances Python (directes + transitives)...'
-                        sh """
-                            docker run --rm \
-                            -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                            -v \${WORKSPACE}:/scan \
-                            aquasec/trivy:0.53.0 fs /scan \
-                            --scanners vuln \
-                            --format json \
-                            --severity HIGH,CRITICAL \
-                            --quiet \
-                            -o /scan/trivy-scan/reports/trivy-dependencies.json || true
-                        """
-                        
-                        // 3) Scanner fichiers projet (secrets, misconfig)
-                        echo '→ 3/5 Scan fichiers projet (secrets, misconfig)...'
-                        sh """
-                            docker run --rm \
-                            -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                            -v \${WORKSPACE}:/scan \
-                            aquasec/trivy:0.53.0 fs /scan \
-                            --scanners misconfig,secret \
-                            --format json \
-                            --quiet \
-                            -o /scan/trivy-scan/reports/trivy-files.json || true
-                        """
-                        
-                        // 4) Analyse Supply Chain (SBOM)
-                        echo '→ 4/5 Génération SBOM Supply Chain...'
-                        sh """
-                            docker run --rm \
-                            -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                            -v \${WORKSPACE}:/scan \
-                            aquasec/trivy:0.53.0 fs /scan \
-                            --format cyclonedx \
-                            --quiet \
-                            -o /scan/trivy-scan/reports/trivy-sbom.json || true
-                        """
-                        
-                        // 5) Rapport HTML consolidé
-                        echo '→ 5/5 Génération rapport HTML complet...'
-                        sh """
-                            docker run --rm \
-                            -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                            -v \${WORKSPACE}:/scan \
-                            aquasec/trivy:0.53.0 fs /scan \
-                            --format template \
-                            --template '@contrib/html.tpl' \
-                            --quiet \
-                            -o /scan/trivy-scan/reports/trivy-report.html || true
-                        """
-                        
-                        // Vérifier rapports générés
-                        sh "ls -lah ${scanDir}/reports/"
-                        
-                        // Copier rapports vers dossier final
-                        echo '→ Copie des rapports vers security-reports...'
-                        sh "cp -r ${scanDir}/reports/. \${WORKSPACE}/${REPORT_DIR}/"
-                        
-                    } finally {
-                        // Nettoyer dossier temporaire
-                        sh "rm -rf ${scanDir}"
-                    }
+                    // 1) Scan requirements.txt (dépendances directes)
+                    echo '→ 1/5 Scan requirements.txt...'
+                    sh """
+                        docker run --rm \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                        -v \${WORKSPACE}:/scan \
+                        aquasec/trivy:0.53.0 fs /scan/requirements.txt \
+                        --scanners vuln \
+                        --format json \
+                        --quiet \
+                        -o /scan/${REPORT_DIR}/trivy-requirements.json || true
+                    """
+                    
+                    // 2) Scanner toutes les dépendances Python (directes + transitives)
+                    echo '→ 2/5 Scan dépendances Python (directes + transitives)...'
+                    sh """
+                        docker run --rm \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                        -v \${WORKSPACE}:/scan \
+                        aquasec/trivy:0.53.0 fs /scan \
+                        --scanners vuln \
+                        --format json \
+                        --severity HIGH,CRITICAL \
+                        --quiet \
+                        -o /scan/${REPORT_DIR}/trivy-dependencies.json || true
+                    """
+                    
+                    // 3) Scanner fichiers projet (secrets, misconfig)
+                    echo '→ 3/5 Scan fichiers projet (secrets, misconfig)...'
+                    sh """
+                        docker run --rm \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                        -v \${WORKSPACE}:/scan \
+                        aquasec/trivy:0.53.0 fs /scan \
+                        --scanners misconfig,secret \
+                        --format json \
+                        --quiet \
+                        -o /scan/${REPORT_DIR}/trivy-files.json || true
+                    """
+                    
+                    // 4) Analyse Supply Chain (SBOM)
+                    echo '→ 4/5 Génération SBOM Supply Chain...'
+                    sh """
+                        docker run --rm \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                        -v \${WORKSPACE}:/scan \
+                        aquasec/trivy:0.53.0 fs /scan \
+                        --format cyclonedx \
+                        --quiet \
+                        -o /scan/${REPORT_DIR}/trivy-sbom.json || true
+                    """
+                    
+                    // 5) Rapport HTML consolidé
+                    echo '→ 5/5 Génération rapport HTML complet...'
+                    sh """
+                        docker run --rm \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                        -v \${WORKSPACE}:/scan \
+                        aquasec/trivy:0.53.0 fs /scan \
+                        --format template \
+                        --template '@contrib/html.tpl' \
+                        --quiet \
+                        -o /scan/${REPORT_DIR}/trivy-report.html || true
+                    """
                     
                     // Vérifier rapports dans Jenkins
                     echo '→ Vérification des rapports Trivy:'
                     sh "ls -lah \${WORKSPACE}/${REPORT_DIR}/trivy* || echo 'Aucun rapport Trivy trouvé'"
                     
-                    // Analyser résultats (utiliser grep au lieu de regex Groovy)
+                    // Analyser résultats (parser grep correctement)
                     if (fileExists("${REPORT_DIR}/trivy-dependencies.json")) {
-                        def criticalCount = sh(script: "grep -c '\"Severity\":\"CRITICAL\"' ${REPORT_DIR}/trivy-dependencies.json || echo 0", returnStdout: true).trim() as Integer
-                        def highCount = sh(script: "grep -c '\"Severity\":\"HIGH\"' ${REPORT_DIR}/trivy-dependencies.json || echo 0", returnStdout: true).trim() as Integer
+                        def criticalRaw = sh(script: "grep -c '\"Severity\":\"CRITICAL\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim()
+                        def highRaw = sh(script: "grep -c '\"Severity\":\"HIGH\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim()
+                        
+                        // Extraire seulement le premier nombre (au cas où grep retourne plusieurs lignes)
+                        def criticalCount = criticalRaw.split('\n')[0].trim() as Integer
+                        def highCount = highRaw.split('\n')[0].trim() as Integer
                         
                         def totalVuln = criticalCount + highCount
                         
