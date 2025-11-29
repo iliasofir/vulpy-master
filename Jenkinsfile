@@ -198,6 +198,7 @@ pipeline {
                             docker exec ${trivyContainer} trivy fs /workspace \
                             --format template \
                             --template '@contrib/html.tpl' \
+                            --quiet \
                             -o /tmp/trivy-reports/trivy-report.html || true
                         """
                         
@@ -220,18 +221,21 @@ pipeline {
                     
                     // Analyser résultats
                     if (fileExists("${REPORT_DIR}/trivy-dependencies.json")) {
-                        def criticalRaw = sh(script: "grep -c '\"Severity\":\"CRITICAL\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim()
-                        def highRaw = sh(script: "grep -c '\"Severity\":\"HIGH\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim()
+                        // Compter TOUTES les vulnérabilités dans les fichiers Trivy
+                        def criticalReq = sh(script: "grep -c '\"Severity\": \"CRITICAL\"' ${REPORT_DIR}/trivy-requirements.json 2>/dev/null || echo 0", returnStdout: true).trim().split('\n')[0] as Integer
+                        def highReq = sh(script: "grep -c '\"Severity\": \"HIGH\"' ${REPORT_DIR}/trivy-requirements.json 2>/dev/null || echo 0", returnStdout: true).trim().split('\n')[0] as Integer
+                        def criticalDep = sh(script: "grep -c '\"Severity\": \"CRITICAL\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim().split('\n')[0] as Integer
+                        def highDep = sh(script: "grep -c '\"Severity\": \"HIGH\"' ${REPORT_DIR}/trivy-dependencies.json 2>/dev/null || echo 0", returnStdout: true).trim().split('\n')[0] as Integer
                         
-                        def criticalCount = criticalRaw.split('\n')[0].trim() as Integer
-                        def highCount = highRaw.split('\n')[0].trim() as Integer
-                        
+                        def criticalCount = criticalReq + criticalDep
+                        def highCount = highReq + highDep
                         def totalVuln = criticalCount + highCount
                         
                         echo ''
                         echo '═══════════════════════════════════════════════════════'
-                        echo "🔒 TRIVY SCA: ${totalVuln} vulnérabilités HIGH/CRITICAL"
-                        echo "   💀 CRITICAL: ${criticalCount}  🔴 HIGH: ${highCount}"
+                        echo "🔒 TRIVY SCA: ${totalVuln} vulnérabilités HIGH/CRITICAL détectées"
+                        echo "   💀 CRITICAL: ${criticalCount} (requirements: ${criticalReq} + dependencies: ${criticalDep})"
+                        echo "   🔴 HIGH: ${highCount} (requirements: ${highReq} + dependencies: ${highDep})"
                         echo '✓ Rapports générés:'
                         echo '   → trivy-requirements.json (dépendances directes)'
                         echo '   → trivy-dependencies.json (directes + transitives)'
