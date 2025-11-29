@@ -115,38 +115,51 @@ pipeline {
         }
 
 
-        stage('🔒 Trivy Security Scan') {
+        stage('🔒 SCA - Trivy') {
             steps {
                 echo '================================================'
-                echo '🔒 Analyse Trivy (Filesystem Scan)'
+                echo '🔒 Analyse Supply-chain Python & deps'
                 echo '================================================'
                 script {
+
+                    def trivyReportDir = "${WORKSPACE}/${REPORT_DIR}"
+
+                    // 1) scan des fichiers du projet + requirements
                     sh """
                         docker run --rm \
                         -v /var/run/docker.sock:/var/run/docker.sock \
-                        -v "\${WORKSPACE}:/src" \
-                        -w /src \
-                        aquasec/trivy:latest fs . \
+                        -v "${WORKSPACE}:/src" \
+                        aquasec/trivy:latest fs /src \
                         --format json \
-                        --output security-reports/trivy-report.json || true
+                        --output ${REPORT_DIR}/trivy-fs.json || true
                     """
 
-                    // Vérification
-                    sh "ls -la ${WORKSPACE}/${REPORT_DIR}/"
-
-                    if (fileExists("${REPORT_DIR}/trivy-report.json")) {
-                        echo "✓ Trivy report OK"
-                    } else {
-                        echo "⚠️ Aucun rapport généré par Trivy"
-                    }
-
-                    // Petit résumé rapide
+                    // 2) SBOM CycloneDX complet
                     sh """
-                        cat security-reports/trivy-report.json | grep -i '"Severity"' | wc -l
+                        docker run --rm \
+                        -v "${WORKSPACE}:/src" \
+                        aquasec/trivy:latest fs /src \
+                        --format cyclonedx \
+                        --output ${REPORT_DIR}/trivy-sbom.json || true
                     """
+
+                    // 3) scan des dépendances Python installées (transitives)
+                    sh """
+                        docker run --rm \
+                        -v "${WORKSPACE}:/src" \
+                        -w /src \
+                        python:3.11-slim bash -c "
+                            pip install -r requirements.txt -q &&
+                            pip freeze > deps.txt &&
+                            trivy fs . --format json --output ${REPORT_DIR}/trivy-deps.json || true
+                        "
+                    """
+
+                    sh "ls -lah ${WORKSPACE}/${REPORT_DIR}/"
                 }
             }
         }
+
 
         
         stage('📊 Archiver les Rapports Bandit') {
