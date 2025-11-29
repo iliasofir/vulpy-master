@@ -136,8 +136,8 @@ pipeline {
                     sh """
                         docker run --rm \
                         -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/scan \
-                        aquasec/trivy:0.53.0 fs /scan/requirements.txt \
+                        -v \${WORKSPACE}:/workspace \
+                        aquasec/trivy:0.53.0 fs /workspace/requirements.txt \
                         --scanners vuln \
                         --format json \
                         --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-requirements.json || true
@@ -148,8 +148,8 @@ pipeline {
                     sh """
                         docker run --rm \
                         -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/scan \
-                        aquasec/trivy:0.53.0 fs /scan \
+                        -v \${WORKSPACE}:/workspace \
+                        aquasec/trivy:0.53.0 fs /workspace \
                         --scanners vuln \
                         --format json \
                         --severity HIGH,CRITICAL \
@@ -161,8 +161,8 @@ pipeline {
                     sh """
                         docker run --rm \
                         -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/scan \
-                        aquasec/trivy:0.53.0 fs /scan \
+                        -v \${WORKSPACE}:/workspace \
+                        aquasec/trivy:0.53.0 fs /workspace \
                         --scanners misconfig,secret \
                         --format json \
                         --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-files.json || true
@@ -173,8 +173,8 @@ pipeline {
                     sh """
                         docker run --rm \
                         -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/scan \
-                        aquasec/trivy:0.53.0 fs /scan \
+                        -v \${WORKSPACE}:/workspace \
+                        aquasec/trivy:0.53.0 fs /workspace \
                         --format cyclonedx \
                         --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-sbom.json || true
                     """
@@ -184,8 +184,8 @@ pipeline {
                     sh """
                         docker run --rm \
                         -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                        -v \${WORKSPACE}:/scan \
-                        aquasec/trivy:0.53.0 fs /scan \
+                        -v \${WORKSPACE}:/workspace \
+                        aquasec/trivy:0.53.0 fs /workspace \
                         --format template \
                         --template '@contrib/html.tpl' \
                         --quiet > \${WORKSPACE}/${REPORT_DIR}/trivy-report.html || true
