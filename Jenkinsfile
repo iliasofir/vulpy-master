@@ -130,14 +130,20 @@ pipeline {
                         // Créer volume pour cache
                         sh "docker volume create ${TRIVY_CACHE_DIR} || true"
                         
-                        // Créer conteneur Trivy persistent
+                        // Créer conteneur Trivy persistent avec tail (plus fiable que sleep)
                         sh """
                             docker run -d --name ${trivyContainer} \
                             -v ${TRIVY_CACHE_DIR}:/root/.cache \
-                            -w /workspace \
+                            --entrypoint /bin/sh \
                             aquasec/trivy:0.53.0 \
-                            sh -c 'while true; do sleep 3600; done'
+                            -c 'tail -f /dev/null'
                         """
+                        
+                        // Vérifier que le conteneur tourne
+                        sh "docker ps | grep ${trivyContainer}"
+                        
+                        // Créer dossier workspace dans conteneur
+                        sh "docker exec ${trivyContainer} mkdir -p /workspace"
                         
                         // Copier code source
                         echo '→ Copie du code source dans le conteneur...'
