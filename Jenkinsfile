@@ -113,6 +113,41 @@ pipeline {
                 }
             }
         }
+
+
+        stage('🔒 Trivy Security Scan') {
+            steps {
+                echo '================================================'
+                echo '🔒 Analyse Trivy (Filesystem Scan)'
+                echo '================================================'
+                script {
+                    sh """
+                        docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v "\${WORKSPACE}:/src" \
+                        -w /src \
+                        aquasec/trivy:latest fs . \
+                        --format json \
+                        --output security-reports/trivy-report.json || true
+                    """
+
+                    // Vérification
+                    sh "ls -la ${WORKSPACE}/${REPORT_DIR}/"
+
+                    if (fileExists("${REPORT_DIR}/trivy-report.json")) {
+                        echo "✓ Trivy report OK"
+                    } else {
+                        echo "⚠️ Aucun rapport généré par Trivy"
+                    }
+
+                    // Petit résumé rapide
+                    sh """
+                        cat security-reports/trivy-report.json | grep -i '"Severity"' | wc -l
+                    """
+                }
+            }
+        }
+
         
         stage('📊 Archiver les Rapports Bandit') {
             steps {
@@ -133,6 +168,15 @@ pipeline {
                         reportDir: "${REPORT_DIR}",
                         reportFiles: 'bandit-report.html',
                         reportName: 'Bandit SAST Report'
+                    ])
+
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: "${REPORT_DIR}",
+                        reportFiles: 'trivy-report.json',
+                        reportName: 'Trivy Scan Report'
                     ])
                     
                     echo '✓ Archivage terminé'
