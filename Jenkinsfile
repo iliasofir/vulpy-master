@@ -325,8 +325,10 @@ pipeline {
                     def imageName = "vulpy:${BUILD_NUMBER}"
                     def reportImage = "${REPORT_DIR}/trivy-image.json"
 
+                    // run container named (NO --rm)
                     sh """
-                        docker run --rm \
+                        docker run -d --name trivy-image-scan \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
                         -v ${TRIVY_CACHE_DIR}:/root/.cache \
                         aquasec/trivy:0.53.0 image \
                         --format json \
@@ -334,11 +336,24 @@ pipeline {
                         ${imageName} || true
                     """
 
-                    sh "docker cp \$(docker ps -ql):/tmp/trivy-image.json ${WORKSPACE}/${REPORT_DIR}/"
-                    echo "✓ Docker image scanned"
+                    // wait for scan to finish
+                    sh "sleep 5"
+
+                    // copy report
+                    sh """
+                        docker cp trivy-image-scan:/tmp/trivy-image.json ${REPORT_DIR}/ || true
+                    """
+
+                    // remove container
+                    sh """
+                        docker rm -f trivy-image-scan || true
+                    """
+
+                    echo "✓ Docker image scanned (report saved)"
                 }
             }
         }
+
     }    
 
     
