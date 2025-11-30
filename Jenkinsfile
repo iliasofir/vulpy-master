@@ -318,6 +318,27 @@ pipeline {
                 }
             }
         }
+
+        stage('🔒 Scan Docker Image with Trivy') {
+            steps {
+                script {
+                    def imageName = "vulpy:${BUILD_NUMBER}"
+                    def reportImage = "${REPORT_DIR}/trivy-image.json"
+
+                    sh """
+                        docker run --rm \
+                        -v ${TRIVY_CACHE_DIR}:/root/.cache \
+                        aquasec/trivy:0.53.0 image \
+                        --format json \
+                        --output /tmp/trivy-image.json \
+                        ${imageName} || true
+                    """
+
+                    sh "docker cp \$(docker ps -ql):/tmp/trivy-image.json ${WORKSPACE}/${REPORT_DIR}/"
+                    echo "✓ Docker image scanned"
+                }
+            }
+        }
     }    
 
     
