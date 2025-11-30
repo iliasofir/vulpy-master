@@ -297,7 +297,29 @@ pipeline {
                 }
             }
         }
-    }
+
+
+        stage('🐳 Build Docker Image') {
+            steps {
+                script {
+                    echo '================================================'
+                    echo '🐳 Building Docker image'
+                    echo '================================================'
+
+                    def imageName = "vulpy:${BUILD_NUMBER}"
+
+                    sh """
+                        docker build \
+                        --build-arg APP_FOLDER=good \
+                        -t ${imageName} .
+                    """
+
+                    echo "✓ Image built: ${imageName}"
+                }
+            }
+        }
+    }    
+
     
     post {
         success {
